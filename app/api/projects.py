@@ -4,7 +4,7 @@ from app.db.session import get_db
 from app.schemas.project import ProjectCreate, ProjectOut
 from app.models.project import Project
 from app.models.user import User
-from app.core.security import get_current_user, require_ba
+from app.core.security import require_ba, require_any_authenticated
 
 
 router = APIRouter()
@@ -27,7 +27,7 @@ def create_project(
 def get_project(
     project_id: int, 
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)  # Any authenticated user can view
+    current_user: User = Depends(require_any_authenticated)  # Any authenticated user can view
 ):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
