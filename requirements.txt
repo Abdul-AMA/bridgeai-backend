@@ -5,12 +5,11 @@ pydantic
 pydantic-settings
 pymysql
 python-dotenv
-passlib[bcrypt]
+bcrypt==4.1.2
+passlib[bcrypt]==1.7.4
 python-jose[cryptography]
 jinja2
 chromadb
 langgraph
 alembic
 python-multipart
-python-jose[cryptography]
-passlib[bcrypt]
