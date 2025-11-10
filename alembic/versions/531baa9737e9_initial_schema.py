@@ -38,17 +38,17 @@ def upgrade() -> None:
     source_type.create(bind, checkfirst=True)
 
     # Create tables
-    op.create_table(
-        'users',
-        sa.Column('id', sa.Integer(), primary_key=True),
-        sa.Column('full_name', sa.String(length=256), nullable=False),
-        sa.Column('email', sa.String(length=256), nullable=False),
-        sa.Column('password_hash', sa.String(length=512), nullable=False),
-        sa.Column('role', user_role, nullable=True, server_default='client'),
-        sa.Column('is_active', sa.Boolean(), nullable=True, server_default=sa.text('true')),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()')),
-    )
-    op.create_index('ix_users_email', 'users', ['email'], unique=True)
+    # op.create_table(
+    #     'users',
+    #     sa.Column('id', sa.Integer(), primary_key=True),
+    #     sa.Column('full_name', sa.String(length=256), nullable=False),
+    #     sa.Column('email', sa.String(length=256), nullable=False),
+    #     sa.Column('password_hash', sa.String(length=512), nullable=False),
+    #     sa.Column('role', user_role, nullable=True, server_default='client'),
+    #     sa.Column('is_active', sa.Boolean(), nullable=True, server_default=sa.text('true')),
+    #     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()')),
+    # )
+    # op.create_index('ix_users_email', 'users', ['email'], unique=True)
 
     op.create_table(
         'projects',
