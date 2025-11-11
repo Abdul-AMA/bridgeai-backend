@@ -23,12 +23,15 @@ def create_team(
     current_user: User = Depends(get_current_user)
 ):
     """Create a new team. The creator automatically becomes the owner."""
-    # Check if team name already exists
-    existing_team = db.query(Team).filter(Team.name == payload.name).first()
+    # Check if team name already exists for this user
+    existing_team = db.query(Team).filter(
+        Team.name == payload.name,
+        Team.created_by == current_user.id
+    ).first()
     if existing_team:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Team name already exists"
+            detail="You already have a team with this name"
         )
     
     # Create the team
@@ -149,8 +152,23 @@ def update_team(
     if not team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
     
-    # Update team fields
+    # Validate that only allowed fields are being updated
     update_data = payload.dict(exclude_unset=True)
+    
+    # Check if user is trying to update name to one that already exists for them
+    if "name" in update_data and update_data["name"] != team.name:
+        existing_team = db.query(Team).filter(
+            Team.name == update_data["name"],
+            Team.created_by == current_user.id,
+            Team.id != team_id  # Exclude current team
+        ).first()
+        if existing_team:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You already have another team with this name"
+            )
+    
+    # Update team fields
     for field, value in update_data.items():
         setattr(team, field, value)
     

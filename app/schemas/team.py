@@ -1,7 +1,8 @@
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, root_validator
+from typing import Optional, List, Any, Dict
 from datetime import datetime
 from enum import Enum
+from fastapi import HTTPException, status
 
 
 class TeamRole(str, Enum):
@@ -27,6 +28,23 @@ class TeamUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     status: Optional[TeamStatus] = None
+    
+    @root_validator(pre=True)
+    def validate_no_immutable_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate that no immutable fields are being updated"""
+        if isinstance(values, dict):
+            # List of fields that should never be updated
+            immutable_fields = ['id', 'created_by', 'created_at', 'updated_at']
+            
+            # Check if any immutable fields are present in the request
+            invalid_fields = [field for field in immutable_fields if field in values]
+            if invalid_fields:
+                raise ValueError(
+                    f"Cannot update immutable fields: {', '.join(invalid_fields)}. "
+                    f"Only these fields can be updated: name, description, status"
+                )
+        
+        return values
 
 
 class TeamMemberOut(BaseModel):
