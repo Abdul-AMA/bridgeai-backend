@@ -1,0 +1,122 @@
+from pydantic import BaseModel, root_validator
+from typing import Optional, List, Any, Dict
+from datetime import datetime
+from enum import Enum
+from fastapi import HTTPException, status
+
+
+class TeamRole(str, Enum):
+    owner = "owner"
+    admin = "admin" 
+    member = "member"
+    viewer = "viewer"
+
+
+class TeamStatus(str, Enum):
+    active = "active"
+    inactive = "inactive"
+    archived = "archived"
+
+
+# Team schemas
+class TeamCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class TeamUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[TeamStatus] = None
+    
+    @root_validator(pre=True)
+    def validate_no_immutable_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate that no immutable fields are being updated"""
+        if isinstance(values, dict):
+            # List of fields that should never be updated
+            immutable_fields = ['id', 'created_by', 'created_at', 'updated_at']
+            
+            # Check if any immutable fields are present in the request
+            invalid_fields = [field for field in immutable_fields if field in values]
+            if invalid_fields:
+                raise ValueError(
+                    f"Cannot update immutable fields: {', '.join(invalid_fields)}. "
+                    f"Only these fields can be updated: name, description, status"
+                )
+        
+        return values
+
+
+# Simple project schema to avoid circular imports
+class ProjectSimpleOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    status: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class TeamMemberOut(BaseModel):
+    id: int
+    user_id: int
+    role: TeamRole
+    is_active: bool
+    joined_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class TeamOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    status: TeamStatus
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+    members: Optional[List[TeamMemberOut]] = []
+    projects: Optional[List[ProjectSimpleOut]] = []
+    
+    class Config:
+        from_attributes = True
+
+
+class TeamListOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    status: TeamStatus
+    created_by: int
+    created_at: datetime
+    member_count: Optional[int] = 0
+    
+    class Config:
+        from_attributes = True
+
+
+# Team member schemas
+class TeamMemberCreate(BaseModel):
+    user_id: int
+    role: Optional[TeamRole] = TeamRole.member
+
+
+class TeamMemberUpdate(BaseModel):
+    role: Optional[TeamRole] = None
+    is_active: Optional[bool] = None
+
+
+class TeamMemberDetailOut(BaseModel):
+    id: int
+    team_id: int
+    user_id: int
+    role: TeamRole
+    is_active: bool
+    joined_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True

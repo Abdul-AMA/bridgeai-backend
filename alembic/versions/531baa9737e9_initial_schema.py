@@ -155,4 +155,4 @@ def downgrade() -> None:
     project_status.drop(bind, checkfirst=True)
     user_role.drop(bind, checkfirst=True)
 
-    # ### end Alembic commands ###
+
