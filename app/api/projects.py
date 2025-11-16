@@ -6,6 +6,7 @@ from app.db.session import get_db
 from app.schemas.project import (
     ProjectCreate, 
     ProjectOut, 
+    ProjectUpdate,
     ProjectApprovalRequest, 
     ProjectRejectionRequest
 )
@@ -211,6 +212,54 @@ def list_projects(
         query = query.filter(Project.status == status.value)
     
     return query.all()
+
+
+@router.put("/{project_id}", response_model=ProjectOut)
+def update_project(
+    project_id: int,
+    payload: ProjectUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Update project details (name, description).
+    Only the creator or BAs can update.
+    """
+    # Get project
+    project = get_project_or_404(db, project_id)
+    
+    # Verify user is team member
+    verify_team_membership(db, project.team_id, current_user.id)
+    
+    # Authorization: Only creator or BA can update
+    if current_user.id != project.created_by and current_user.role != UserRole.ba:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the project creator or Business Analysts can update this project"
+        )
+    
+    # Check duplicate name if name is being changed
+    if payload.name and payload.name != project.name:
+        check_duplicate_project_name(db, payload.name, project.team_id, exclude_id=project_id)
+    
+    # Update fields
+    if payload.name is not None:
+        project.name = payload.name
+    if payload.description is not None:
+        project.description = payload.description
+    if payload.status is not None:
+        # Only BAs can change status via this endpoint
+        if current_user.role != UserRole.ba:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Business Analysts can change project status"
+            )
+        project.status = payload.status.value
+    
+    db.commit()
+    db.refresh(project)
+    
+    return project
 
 
 @router.put("/{project_id}/approve", response_model=ProjectOut)
