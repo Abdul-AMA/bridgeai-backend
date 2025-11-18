@@ -209,6 +209,14 @@ def delete_team(
     if not team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
     
+    # Check if team has projects
+    project_count = db.query(func.count(Project.id)).filter(Project.team_id == team_id).scalar()
+    if project_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete team with {project_count} project(s). Please delete or move all projects first, or archive the team instead."
+        )
+    
     db.delete(team)
     db.commit()
     
