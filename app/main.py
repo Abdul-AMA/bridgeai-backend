@@ -8,6 +8,7 @@ from app.core.rate_limit import limiter
 from app.db.session import engine, Base
 from app.api import router as api_router
 from app.api import auth
+from app.api import ai
 from app import __version__
 
 app = FastAPI(
@@ -49,6 +50,7 @@ app.add_middleware(
 # ✅ Include routers
 app.include_router(api_router, prefix="/api")
 app.include_router(auth.router)  # make sure this defines /auth/token
+app.include_router(ai.router, prefix="/api/ai")
 
 @app.get("/")
 def root():
