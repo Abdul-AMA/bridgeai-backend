@@ -8,6 +8,7 @@ from app.core.rate_limit import limiter
 from app.db.session import engine, Base
 from app.api import router as api_router
 from app.api import auth
+from app.api import ai
 from app import __version__
 
 app = FastAPI(
