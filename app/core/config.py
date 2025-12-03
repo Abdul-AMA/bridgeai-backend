@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     SMTP_FROM_NAME: str = "BridgeAI"
     
     # AI settings
-    OPENAI_API_KEY: str
+    XAI_API_KEY: str
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
