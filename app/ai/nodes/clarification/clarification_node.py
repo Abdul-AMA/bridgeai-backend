@@ -1,11 +1,5 @@
 """
-Clarification Node Module (LLM-Powered)
-
-This node uses the LLM ambiguity detector to:
-- Analyze requirement clarity
-- Detect ambiguities dynamically
-- Generate clarification questions
-- Update AgentState for LangGraph
+Clarification Node using Groq LLM for requirement ambiguity detection.
 """
 
 from typing import Dict, Any
@@ -14,21 +8,18 @@ from app.ai.nodes.clarification.llm_ambiguity_detector import LLMAmbiguityDetect
 
 
 def clarification_node(state: AgentState) -> Dict[str, Any]:
-
     user_input = state.get("user_input", "")
     conversation_history = state.get("conversation_history", [])
     extracted_fields = state.get("extracted_fields", {})
 
-    # Build context
+    # Build context payload
     context = {
         "conversation_history": conversation_history,
         "extracted_fields": extracted_fields
     }
 
-    # Initialize pure LLM detector
+    # Run Groq-powered ambiguity detection
     detector = LLMAmbiguityDetector()
-
-    # Perform full LLM analysis
     result = detector.analyze_and_generate_questions(user_input, context)
 
     ambiguities = result["ambiguities"]
@@ -37,34 +28,27 @@ def clarification_node(state: AgentState) -> Dict[str, Any]:
     summary = result["summary"]
     needs_clarification = result["needs_clarification"]
 
-    # Build ambiguity summary for API
-    ambiguity_summary = [
-        {
-            "type": amb.type,
-            "field": amb.field,
-            "reason": amb.reason,
-            "severity": amb.severity,
-            "suggestion": amb.suggestion
-        }
-        for amb in ambiguities
-    ]
-
     # Build response message
     if needs_clarification:
-        response = (
-            "I'd like to clarify a few points to ensure the requirements are fully understood:\n\n"
-        )
+        response = "I'd like to clarify a few points:\n\n"
         for i, q in enumerate(clarification_questions, 1):
             response += f"{i}. {q}\n"
     else:
-        response = (
-            f"Your requirements look clear! (Clarity Score: {clarity_score}/100)\n"
-            "Proceeding to the next step."
-        )
+        response = f"Your requirements are clear. (Clarity Score: {clarity_score}/100)"
 
+    # Update state and return
     return {
         "clarification_questions": clarification_questions,
-        "ambiguities": ambiguity_summary,
+        "ambiguities": [
+            {
+                "type": a.type,
+                "field": a.field,
+                "reason": a.reason,
+                "severity": a.severity,
+                "suggestion": a.suggestion
+            }
+            for a in ambiguities
+        ],
         "needs_clarification": needs_clarification,
         "clarity_score": clarity_score,
         "quality_summary": summary,
@@ -74,5 +58,4 @@ def clarification_node(state: AgentState) -> Dict[str, Any]:
 
 
 def should_request_clarification(state: AgentState) -> bool:
-    """Routing function for LangGraph."""
     return state.get("needs_clarification", False)
