@@ -5,17 +5,21 @@ from app.ai.state import AgentState
 
 # Nodes
 from app.ai.nodes.clarification import clarification_node, should_request_clarification
+from app.ai.nodes.template_filler import template_filler_node
 from app.ai.nodes.echo_node import echo_node
 
 
 def create_graph():
     """
-    Create the LangGraph workflow with the LLM-powered Clarification Agent.
+    Create the LangGraph workflow with:
+    1. Clarification Agent - Detects ambiguities and asks clarifying questions
+    2. Template Filler Agent - Maps clarified requirements to CRS template
 
     Workflow:
     1. User input → Clarification Agent
     2. If clarification is needed → END (return questions to client)
-    3. If no clarification needed → Continue to next nodes (echo for now)
+    3. If no clarification needed → Template Filler Agent
+    4. Template Filler fills CRS → END (return CRS to client)
     """
 
     # Create graph with AgentState as the shared memory type
@@ -25,7 +29,8 @@ def create_graph():
     # REGISTER NODES
     # ----------------------------
     graph.add_node("clarification", clarification_node)
-    graph.add_node("echo", echo_node)  # placeholder for next agent(s)
+    graph.add_node("template_filler", template_filler_node)
+    graph.add_node("echo", echo_node)  # placeholder for future agent(s)
 
     # ----------------------------
     # ENTRY POINT
@@ -40,14 +45,14 @@ def create_graph():
         should_request_clarification,     # function returns: True or False
         {
             True: END,                    # If clarification needed → stop workflow
-            False: "echo"                 # Otherwise continue to echo or next node
+            False: "template_filler"      # Otherwise continue to template filler
         }
     )
 
     # ----------------------------
-    # ECHO → END
+    # TEMPLATE FILLER → END
     # ----------------------------
-    graph.add_edge("echo", END)
+    graph.add_edge("template_filler", END)
 
     # ----------------------------
     # COMPILE GRAPH
