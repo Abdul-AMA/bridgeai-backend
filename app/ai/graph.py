@@ -5,7 +5,7 @@ from app.ai.state import AgentState
 
 # Nodes
 from app.ai.nodes.clarification import clarification_node, should_request_clarification
-from app.ai.nodes.echo_node import echo_node
+from app.ai.nodes.memory_node import memory_node
 
 
 def create_graph():
@@ -15,7 +15,7 @@ def create_graph():
     Workflow:
     1. User input → Clarification Agent
     2. If clarification is needed → END (return questions to client)
-    3. If no clarification needed → Continue to next nodes (echo for now)
+    3. If no clarification needed → Memory Node (store requirement) → END
     """
 
     # Create graph with AgentState as the shared memory type
@@ -25,7 +25,7 @@ def create_graph():
     # REGISTER NODES
     # ----------------------------
     graph.add_node("clarification", clarification_node)
-    graph.add_node("echo", echo_node)  # placeholder for next agent(s)
+    graph.add_node("memory", memory_node)
 
     # ----------------------------
     # ENTRY POINT
@@ -40,14 +40,14 @@ def create_graph():
         should_request_clarification,     # function returns: True or False
         {
             True: END,                    # If clarification needed → stop workflow
-            False: "echo"                 # Otherwise continue to echo or next node
+            False: "memory"               # Otherwise continue to memory node
         }
     )
 
     # ----------------------------
-    # ECHO → END
+    # MEMORY → END
     # ----------------------------
-    graph.add_edge("echo", END)
+    graph.add_edge("memory", END)
 
     # ----------------------------
     # COMPILE GRAPH

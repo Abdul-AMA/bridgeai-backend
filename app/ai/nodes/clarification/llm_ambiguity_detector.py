@@ -29,7 +29,21 @@ class LLMAmbiguityDetector:
     ANALYSIS_PROMPT = """
 You are a senior Business Analyst specialized in requirements analysis.
 
-Analyze the client's requirement below and identify any ambiguities or missing information that would prevent a developer from implementing the requirement.
+Analyze the client's requirement below.
+First, determine the INTENT of the user input:
+- "requirement": The user is describing a feature, rule, or constraint for the system.
+- "greeting": The user is saying hello or small talk.
+- "question": The user is asking a question about YOU (the AI) or the process, not specifying a requirement.
+- "other": Anything else.
+
+IF INTENT IS "greeting" OR "question":
+- Return "ambiguities": []
+- Return "overall_clarity_score": 100
+- Return "summary": "User is engaging in conversation, not specifying requirements."
+- Return "intent": "greeting" (or "question")
+
+IF INTENT IS "requirement":
+- Identify any ambiguities or missing information that would prevent a developer from implementing the requirement.
 
 USER INPUT:
 {user_input}
@@ -45,6 +59,7 @@ IMPORTANT: Return ONLY a valid JSON object without any markdown formatting or co
 
 Your response must be a pure JSON object with this exact structure:
 {{
+  "intent": "requirement",
   "ambiguities": [
     {{
       "type": "missing",
@@ -177,13 +192,14 @@ Return pure JSON now:
 
             clarity_score = result.get("overall_clarity_score", 50)
             summary = result.get("summary", "Analysis completed")
+            intent = result.get("intent", "requirement")
 
-            return ambiguities, clarity_score, summary
+            return ambiguities, clarity_score, summary, intent
             
         except Exception as e:
             logger.error(f"Analysis failed: {str(e)}")
             # Return safe defaults on error
-            return [], 50, f"Analysis error: {str(e)}"
+            return [], 50, f"Analysis error: {str(e)}", "requirement"
 
     # -----------------------------------
     # Question Generation
@@ -225,18 +241,24 @@ Return pure JSON now:
         """Complete workflow: analyze requirements and generate questions."""
         logger.info(f"Analyzing requirement: {user_input[:100]}...")
         
-        ambiguities, score, summary = self.analyze(user_input, context)
+        ambiguities, score, summary, intent = self.analyze(user_input, context)
         
         # Only generate questions for significant ambiguities or low clarity scores
-        needs_clarification = len(ambiguities) > 0 or score < 70
+        # AND if the intent is actually a requirement analysis
+        needs_clarification = (len(ambiguities) > 0 or score < 70) and intent == "requirement"
         
         questions = []
         if needs_clarification:
             questions = self.generate_questions(ambiguities)
 
-        logger.info(f"Analysis complete. Score: {score}, Questions: {len(questions)}")
+        logger.info(f"Analysis complete. Score: {score}, Questions: {len(questions)}, Intent: {intent}")
         
         return {
+            "ambiguities": ambiguities,
+            "clarification_questions": questions,
+            "clarity_score": score,
+            "summary": summary,
+            "intent": intent,
             "ambiguities": ambiguities,
             "clarification_questions": questions,
             "clarity_score": score,

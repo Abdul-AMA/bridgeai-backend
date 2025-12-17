@@ -54,12 +54,19 @@ def clarification_node(state: AgentState) -> Dict[str, Any]:
     summary = result["summary"]
     needs_clarification = result["needs_clarification"]
 
+    intent = result.get("intent", "requirement")
+
     # Build response message
     if needs_clarification:
         response = "I'd like to clarify a few points:\n\n"
         for i, q in enumerate(clarification_questions, 1):
             response += f"{i}. {q}\n"
+    elif intent == "greeting":
+        response = "Hello! How can I help you with your project requirements today?"
+    elif intent == "question":
+        response = "I am a Business Analyst AI assistant. I can help you define and clarify your project requirements. Please describe what you'd like to build."
     else:
+        # Default for clear requirements
         response = f"Your requirements are clear. (Clarity Score: {clarity_score}/100)"
 
     # Update state and return
