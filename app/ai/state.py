@@ -20,3 +20,5 @@ class AgentState(TypedDict, total=False):
     # Memory and context
     project_id: Optional[int]
     db: Optional[Any]  # SQLAlchemy Session for memory queries
+    message_id: Optional[int]
+    intent: Optional[str]

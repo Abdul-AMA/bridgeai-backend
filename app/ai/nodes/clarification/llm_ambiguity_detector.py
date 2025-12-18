@@ -44,6 +44,7 @@ IF INTENT IS "greeting" OR "question":
 
 IF INTENT IS "requirement":
 - Identify any ambiguities or missing information that would prevent a developer from implementing the requirement.
+- Use the CONTEXT (Conversation History and Relevant Memories) to understand if a requirement contradicts or duplicates previous ones.
 
 USER INPUT:
 {user_input}
@@ -51,6 +52,9 @@ USER INPUT:
 CONTEXT:
 Conversation History:
 {conversation_history}
+
+Relevant Memories (Previous Requirements/Context):
+{relevant_memories}
 
 Extracted Fields:
 {extracted_fields}
@@ -148,8 +152,7 @@ Return pure JSON now:
     def _call_llm(self, messages):
         """Call Groq LLM and return the response content."""
         try:
-            response = self.llm.invoke(messages)
-            return response.content
+            return self.llm.invoke(messages).content
         except Exception as e:
             logger.error(f"LLM call failed: {str(e)}")
             raise
@@ -164,6 +167,13 @@ Return pure JSON now:
             conv_history = context.get("conversation_history", [])
             history_text = "\n".join(conv_history) if conv_history else "No previous conversation"
             
+            # Format relevant memories
+            memories = context.get("relevant_memories", [])
+            if memories:
+                memories_text = "\n".join([f"- {m['text']} (Similarity: {m.get('similarity', 0):.2f})" for m in memories])
+            else:
+                memories_text = "No relevant past memories found."
+
             # Format extracted fields
             fields = context.get("extracted_fields", {})
             fields_text = json.dumps(fields, indent=2) if fields else "No extracted fields yet"
@@ -171,6 +181,7 @@ Return pure JSON now:
             messages = self.analysis_prompt.format_messages(
                 user_input=user_input,
                 conversation_history=history_text,
+                relevant_memories=memories_text,
                 extracted_fields=fields_text,
             )
 
