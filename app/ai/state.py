@@ -24,6 +24,11 @@ class AgentState(TypedDict, total=False):
     crs_document_id: Optional[int]  # Database ID of the persisted CRS document
     crs_version: Optional[int]  # Version number of the CRS document
 
+    # Suggestions Agent fields
+    suggestions: Optional[List[Dict[str, Any]]]  # Generated creative suggestions
+    suggestions_generated: bool  # Whether suggestions have been generated
+    suggestions_error: Optional[str]  # Error message if suggestions failed
+
     # Workflow control
     last_node: Optional[str]
     next_action: Optional[str]
