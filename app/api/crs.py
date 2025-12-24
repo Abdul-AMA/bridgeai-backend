@@ -1,5 +1,6 @@
 import json
 from typing import List, Optional
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -36,6 +37,7 @@ class CRSOut(BaseModel):
     summary_points: List[str]
     created_by: Optional[int] = None
     approved_by: Optional[int] = None
+    created_at: datetime
 
     class Config:
         orm_mode = True
@@ -70,6 +72,7 @@ def create_crs(
         summary_points=payload.summary_points,
         created_by=crs.created_by,
         approved_by=crs.approved_by,
+        created_at=crs.created_at,
     )
 
 
@@ -103,6 +106,7 @@ def read_latest_crs(
         summary_points=summary_points,
         created_by=crs.created_by,
         approved_by=crs.approved_by,
+        created_at=crs.created_at,
     )
 
 
@@ -134,6 +138,7 @@ def read_crs_versions(
             summary_points=summary_points,
             created_by=crs.created_by,
             approved_by=crs.approved_by,
+            created_at=crs.created_at,
         ))
     return result
 
@@ -195,4 +200,5 @@ def update_crs_status_endpoint(
         summary_points=summary_points,
         created_by=updated_crs.created_by,
         approved_by=updated_crs.approved_by,
+        created_at=updated_crs.created_at,
     )
