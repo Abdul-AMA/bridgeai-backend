@@ -365,20 +365,142 @@ def export_markdown_bytes(markdown_text: str) -> bytes:
 
 
 def html_to_pdf_bytes(html: str) -> bytes:
-    """Render HTML to PDF bytes.
+    """Render HTML to PDF bytes using xhtml2pdf.
 
-    Tries to use WeasyPrint. If it's not installed or fails, raises RuntimeError
-    to indicate the runtime dependency is required.
+    Converts HTML to PDF using xhtml2pdf (pisa), which is cross-platform compatible
+    with Windows and Linux without external system dependencies.
+    Preserves formatting, colors, fonts, and layout.
     """
     if html is None:
         html = ""
     try:
-        from weasyprint import HTML
+        from xhtml2pdf import pisa
+        from io import BytesIO
     except Exception as e:
-        raise RuntimeError("PDF export requires weasyprint to be installed") from e
+        raise RuntimeError("PDF export requires xhtml2pdf to be installed") from e
 
     try:
-        pdf = HTML(string=html).write_pdf()
-        return pdf
+        # Wrap HTML with proper DOCTYPE for xhtml2pdf
+        full_html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #2c3e50;
+            margin: 20px;
+        }}
+        h1, h2, h3, h4, h5, h6 {{
+            color: #0066cc;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }}
+        h1 {{
+            font-size: 24pt;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 0.3em;
+        }}
+        h2 {{
+            font-size: 18pt;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 0.2em;
+        }}
+        p {{
+            margin: 0.5em 0;
+            text-align: justify;
+        }}
+        strong {{
+            font-weight: bold;
+            color: #0066cc;
+        }}
+        em {{
+            font-style: italic;
+        }}
+        code {{
+            background-color: #f5f5f5;
+            padding: 2px 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #c41e3a;
+        }}
+        pre {{
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            padding: 12px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }}
+        blockquote {{
+            border-left: 4px solid #0066cc;
+            background-color: #f0f7ff;
+            margin: 15px 0;
+            padding: 12px 15px;
+            color: #2c3e50;
+        }}
+        ul, ol {{
+            margin: 12px 0;
+            padding-left: 25px;
+        }}
+        li {{
+            margin-bottom: 6px;
+        }}
+        table {{
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+            border: 1px solid #ddd;
+        }}
+        table thead {{
+            background-color: #0066cc;
+            color: white;
+        }}
+        table th {{
+            padding: 10px;
+            text-align: left;
+            font-weight: bold;
+            border: 1px solid #0066cc;
+        }}
+        table td {{
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+        }}
+        table tbody tr:nth-child(odd) {{
+            background-color: #fafafa;
+        }}
+        a {{
+            color: #0066cc;
+            text-decoration: underline;
+        }}
+        hr {{
+            border: none;
+            border-top: 2px solid #ddd;
+            margin: 25px 0;
+        }}
+    </style>
+</head>
+<body>
+    {html}
+</body>
+</html>"""
+        
+        pdf_buffer = BytesIO()
+        
+        # Convert HTML to PDF
+        status = pisa.CreatePDF(
+            full_html,
+            pdf_buffer,
+            encoding='UTF-8'
+        )
+        
+        if status.err:
+            raise RuntimeError(f"PDF generation failed: {status.err}")
+        
+        pdf_buffer.seek(0)
+        return pdf_buffer.getvalue()
     except Exception as e:
-        raise RuntimeError("Failed to render PDF") from e
+        raise RuntimeError(f"Failed to render PDF: {str(e)}") from e
