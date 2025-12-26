@@ -89,7 +89,7 @@ class TestCommentEndpoints:
         
         assert response.status_code == 403
         
-    def test_ba_cannot_access_draft_crs(
+    def test_cannot_access_draft_crs(
         self,
         client: TestClient,
         db: Session,
@@ -97,7 +97,7 @@ class TestCommentEndpoints:
         ba_token: str,
         sample_project: Project
     ):
-        """Test BA cannot access draft CRS even if assigned to project."""
+        """Test NO ONE (BA or Client) can access comments on draft CRS."""
         # Assign BA to project
         self._assign_ba_to_project(db, ba_user, sample_project)
         
@@ -113,7 +113,7 @@ class TestCommentEndpoints:
         db.commit()
         db.refresh(draft_crs)
         
-        # Try to comment
+        # Try to comment as BA
         payload = {
             "crs_id": draft_crs.id,
             "content": "Comment on draft"
@@ -126,7 +126,42 @@ class TestCommentEndpoints:
         )
         
         assert response.status_code == 403
-        assert "draft" in response.text.lower()
+        assert "comments are not available for draft crs" in response.json()["detail"].lower()
+
+    def test_client_cannot_comment_on_draft(
+        self,
+        client: TestClient,
+        db: Session,
+        client_token: str,
+        sample_project: Project
+    ):
+        """Test Client cannot comment on their own draft CRS."""
+        # Create a draft CRS
+        draft_crs = CRSDocument(
+            project_id=sample_project.id,
+            created_by=sample_project.created_by,
+            content="Draft content",
+            summary_points="[]",
+            status=CRSStatus.draft
+        )
+        db.add(draft_crs)
+        db.commit()
+        db.refresh(draft_crs)
+        
+        # Try to comment
+        payload = {
+            "crs_id": draft_crs.id,
+            "content": "Self comment on draft"
+        }
+        
+        response = client.post(
+            "/api/comments",
+            json=payload,
+            headers={"Authorization": f"Bearer {client_token}"}
+        )
+        
+        assert response.status_code == 403
+        assert "comments are not available for draft crs" in response.json()["detail"].lower()
 
     def test_create_comment_as_client_on_own_project(
         self,
@@ -137,7 +172,8 @@ class TestCommentEndpoints:
         sample_project: Project,
         sample_crs: CRSDocument
     ):
-        """Test client can create a comment on their own project's CRS."""
+        """Test client can create a comment on their own project's non-draft CRS."""
+        # Ensure sample_crs is NOT draft (fixture default is under_review), so this should pass
         payload = {
             "crs_id": sample_crs.id,
             "content": "Thank you for the feedback. I will update section 2.3."

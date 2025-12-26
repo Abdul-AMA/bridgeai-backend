@@ -93,11 +93,23 @@ def verify_crs_access(db: Session, crs_id: int, user: User) -> CRSDocument:
     Raises:
         HTTPException: If CRS not found or access denied
     """
+    from app.models.project import Project
+    from app.models.team import TeamMember
+    from app.models.crs import CRSStatus
+
     crs = db.query(CRSDocument).filter(CRSDocument.id == crs_id).first()
     if not crs:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"CRS document with id={crs_id} not found"
+        )
+    
+    # Global restriction: No one can access comments for DRAFT CRS documents
+    # Comments are for feedback on submitted/reviewed documents only.
+    if crs.status == CRSStatus.draft:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Comments are not available for draft CRS documents"
         )
     
     # Check if user is the creator (always allow creator, regardless of role)
@@ -128,14 +140,6 @@ def verify_crs_access(db: Session, crs_id: int, user: User) -> CRSDocument:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this CRS document"
-        )
-    
-    # Additional restriction for BAs: Cannot access DRAFT CRS documents
-    # BAs only review submitted CRS (under_review, approved, rejected)
-    if user.role == UserRole.ba and crs.status == CRSStatus.draft:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="BAs cannot access draft CRS documents"
         )
     
     return crs
