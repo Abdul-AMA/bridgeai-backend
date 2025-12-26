@@ -1,8 +1,10 @@
 import json
 from typing import List, Optional
 from datetime import datetime
+import io
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -12,6 +14,12 @@ from app.db.session import get_db
 from app.models.crs import CRSDocument, CRSStatus
 from app.models.user import User
 from app.services.crs_service import get_latest_crs, persist_crs_document, get_crs_versions, update_crs_status
+from app.schemas.export import ExportFormat
+from app.services.export_service import (
+    crs_to_professional_html,
+    html_to_pdf_bytes,
+    export_markdown_bytes,
+)
 
 
 router = APIRouter()
@@ -201,4 +209,112 @@ def update_crs_status_endpoint(
         created_by=updated_crs.created_by,
         approved_by=updated_crs.approved_by,
         created_at=updated_crs.created_at,
+    )
+
+@router.post("/{crs_id}/export")
+def export_crs(
+    crs_id: int,
+    format: ExportFormat = Query(ExportFormat.pdf),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Export a CRS document as PDF or Markdown with professional formatting.
+    
+    PDF exports include a professional corporate document header and styling.
+    """
+    # Get CRS document
+    crs = db.query(CRSDocument).filter(CRSDocument.id == crs_id).first()
+    if not crs:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CRS document not found"
+        )
+    
+    # Verify access
+    project = get_project_or_404(db, crs.project_id)
+    verify_team_membership(db, project.team_id, current_user.id)
+    
+    filename = f"crs-v{crs.version}.{format.value}"
+    
+    # If CRS content is JSON, convert to markdown
+    import json
+    def crs_json_to_markdown(crs_json):
+        md = []
+        md.append(f"# {crs_json.get('project_title', 'CRS Document')}")
+        md.append("\n---\n")
+        if crs_json.get('project_description'):
+            md.append(f"**Description:** {crs_json['project_description']}\n")
+        if crs_json.get('project_objectives'):
+            md.append("## Objectives\n" + "\n".join(f"- {o}" for o in crs_json['project_objectives']) + "\n")
+        if crs_json.get('target_users'):
+            md.append(f"**Target Users:** {', '.join(crs_json['target_users'])}\n")
+        if crs_json.get('stakeholders'):
+            md.append(f"**Stakeholders:** {', '.join(crs_json['stakeholders'])}\n")
+        md.append("\n---\n")
+        if crs_json.get('functional_requirements'):
+            md.append("## Functional Requirements\n")
+            for fr in crs_json['functional_requirements']:
+                md.append(f"- **{fr['id']} {fr['title']}** ({fr['priority']}): {fr['description']}")
+        md.append("\n---\n")
+        if crs_json.get('performance_requirements'):
+            md.append("## Performance Requirements\n" + "\n".join(f"- {p}" for p in crs_json['performance_requirements']) + "\n")
+        if crs_json.get('security_requirements'):
+            md.append("## Security Requirements\n" + "\n".join(f"- {s}" for s in crs_json['security_requirements']) + "\n")
+        if crs_json.get('scalability_requirements'):
+            md.append("## Scalability Requirements\n" + "\n".join(f"- {s}" for s in crs_json['scalability_requirements']) + "\n")
+        md.append("\n---\n")
+        if crs_json.get('technology_stack'):
+            md.append("## Technology Stack\n")
+            for k, v in crs_json['technology_stack'].items():
+                md.append(f"- **{k.capitalize()}**: {', '.join(v)}")
+        if crs_json.get('integrations'):
+            md.append(f"**Integrations:** {', '.join(crs_json['integrations'])}\n")
+        if crs_json.get('budget_constraints'):
+            md.append(f"**Budget:** {crs_json['budget_constraints']}\n")
+        if crs_json.get('timeline_constraints'):
+            md.append(f"**Timeline:** {crs_json['timeline_constraints']}\n")
+        if crs_json.get('technical_constraints'):
+            md.append(f"**Technical Constraints:** {', '.join(crs_json['technical_constraints'])}\n")
+        md.append("\n---\n")
+        if crs_json.get('success_metrics'):
+            md.append("## Success Metrics\n" + "\n".join(f"- {m}" for m in crs_json['success_metrics']) + "\n")
+        if crs_json.get('acceptance_criteria'):
+            md.append("## Acceptance Criteria\n" + "\n".join(f"- {a}" for a in crs_json['acceptance_criteria']) + "\n")
+        if crs_json.get('assumptions'):
+            md.append(f"**Assumptions:** {', '.join(crs_json['assumptions'])}\n")
+        if crs_json.get('risks'):
+            md.append(f"**Risks:** {', '.join(crs_json['risks'])}\n")
+        if crs_json.get('out_of_scope'):
+            md.append(f"**Out of Scope:** {', '.join(crs_json['out_of_scope'])}\n")
+        md.append("\n---\n")
+        return "\n".join(md)
+
+    content = crs.content or ""
+    try:
+        crs_json = json.loads(content)
+        markdown_content = crs_json_to_markdown(crs_json)
+    except Exception:
+        markdown_content = content
+
+    if format == ExportFormat.markdown:
+        data = export_markdown_bytes(markdown_content)
+        media_type = "text/markdown"
+    elif format == ExportFormat.pdf:
+        from app.services.export_service import markdown_to_html
+        html = markdown_to_html(markdown_content)
+        try:
+            data = html_to_pdf_bytes(html)
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        media_type = "application/pdf"
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported format")
+    
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
     )
