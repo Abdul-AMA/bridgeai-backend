@@ -32,12 +32,31 @@ comments
 
 All endpoints are prefixed with `/api` and tagged as `comments`.
 
+#### Access Control
+
+The API enforces the following access control rules:
+
+1.  **Authentication**: All endpoints require a valid JWT token.
+2.  **Role-Based Access**:
+    *   **BAs**: Can view and comment on CRS documents for **projects they are assigned to**, provided the CRS is **not in Draft status**.
+    *   **Clients**: Can view and comment on CRS documents for projects where they are a team member or the project creator.
+3.  **Ownership**:
+    *   Update/Delete operations are restricted to the author of the comment.
+    *   Validation ensures a user cannot modify another user's comments.
+
+### Validation
+
+- **CRS Status**: BAs cannot access or comment on CRS documents with status `draft`.
+- **Project Membership**: Both BAs and Clients must be members of the project's team to access its CRS comments.
+- **Content**: Comments must be non-empty and less than 5000 characters.
+- **Existence**: Checks for valid `crs_id` and `comment_id`.
+
 #### 1. Create Comment
 - **Endpoint**: `POST /api/comments`
 - **Authentication**: Required (BA or Client)
 - **Access Control**:
-  - BAs can comment on any CRS document
-  - Clients can only comment on CRS documents for projects they have access to
+  - BAs can comment on CRS (non-draft) for projects they are assigned to
+  - Clients can comment on CRS for projects they have access to
 - **Request Body**:
   ```json
   {
@@ -117,8 +136,8 @@ Provides business logic for comment operations:
 ## Access Control
 
 ### BA Users
-- Can view all CRS documents and their comments
-- Can add comments to any CRS document
+- Can view/comment on CRS documents for **projects they are assigned to**
+- Can ONLY access CRS documents that are **NOT in Draft status**
 - Can update/delete their own comments
 
 ### Client Users
@@ -131,7 +150,7 @@ Provides business logic for comment operations:
 ### Verification Flow
 1. Verify CRS document exists
 2. Check user role:
-   - **BA**: Grant access automatically
+   - **BA**: Verify project team membership AND ensure CRS is not `draft`
    - **Client**: Verify project ownership or team membership
 3. For update/delete: Verify comment ownership
 

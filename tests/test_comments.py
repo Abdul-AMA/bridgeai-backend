@@ -16,6 +16,16 @@ from app.models.team import Team, TeamMember
 class TestCommentEndpoints:
     """Test suite for comment API endpoints."""
     
+    def _assign_ba_to_project(self, db: Session, ba_user: User, project: Project):
+        """Helper to assign BA to project team."""
+        member = TeamMember(
+            team_id=project.team_id,
+            user_id=ba_user.id,
+            role="member"
+        )
+        db.add(member)
+        db.commit()
+
     def test_create_comment_as_ba(
         self,
         client: TestClient,
@@ -25,7 +35,10 @@ class TestCommentEndpoints:
         sample_project: Project,
         sample_crs: CRSDocument
     ):
-        """Test BA can create a comment on any CRS document."""
+        """Test BA can create a comment on assigned project CRS."""
+        # Assign BA to the project's team
+        self._assign_ba_to_project(db, ba_user, sample_project)
+        
         payload = {
             "crs_id": sample_crs.id,
             "content": "Please clarify the authentication requirements in section 2.3"
@@ -50,7 +63,71 @@ class TestCommentEndpoints:
         comment = db.query(Comment).filter(Comment.id == data["id"]).first()
         assert comment is not None
         assert comment.content == payload["content"]
-    
+        
+    def test_ba_cannot_access_unassigned_project(
+        self,
+        client: TestClient,
+        db: Session,
+        ba_user: User,
+        ba_token: str,
+        sample_project: Project,
+        sample_crs: CRSDocument
+    ):
+        """Test BA cannot comment on a project they are not assigned to."""
+        # Do NOT assign BA to project
+        
+        payload = {
+            "crs_id": sample_crs.id,
+            "content": "Intruder comment"
+        }
+        
+        response = client.post(
+            "/api/comments",
+            json=payload,
+            headers={"Authorization": f"Bearer {ba_token}"}
+        )
+        
+        assert response.status_code == 403
+        
+    def test_ba_cannot_access_draft_crs(
+        self,
+        client: TestClient,
+        db: Session,
+        ba_user: User,
+        ba_token: str,
+        sample_project: Project
+    ):
+        """Test BA cannot access draft CRS even if assigned to project."""
+        # Assign BA to project
+        self._assign_ba_to_project(db, ba_user, sample_project)
+        
+        # Create a draft CRS
+        draft_crs = CRSDocument(
+            project_id=sample_project.id,
+            created_by=sample_project.created_by,
+            content="Draft content",
+            summary_points="[]",
+            status=CRSStatus.draft
+        )
+        db.add(draft_crs)
+        db.commit()
+        db.refresh(draft_crs)
+        
+        # Try to comment
+        payload = {
+            "crs_id": draft_crs.id,
+            "content": "Comment on draft"
+        }
+        
+        response = client.post(
+            "/api/comments",
+            json=payload,
+            headers={"Authorization": f"Bearer {ba_token}"}
+        )
+        
+        assert response.status_code == 403
+        assert "draft" in response.text.lower()
+
     def test_create_comment_as_client_on_own_project(
         self,
         client: TestClient,
@@ -118,9 +195,13 @@ class TestCommentEndpoints:
         ba_user: User,
         client_user: User,
         ba_token: str,
+        sample_project: Project,
         sample_crs: CRSDocument
     ):
         """Test retrieving all comments for a CRS document."""
+        # Assign BA to project
+        self._assign_ba_to_project(db, ba_user, sample_project)
+
         from datetime import datetime, timedelta, timezone
         
         # Create multiple comments
@@ -168,9 +249,13 @@ class TestCommentEndpoints:
         db: Session,
         ba_user: User,
         ba_token: str,
+        sample_project: Project,
         sample_crs: CRSDocument
     ):
         """Test pagination of comments."""
+        # Assign BA to project
+        self._assign_ba_to_project(db, ba_user, sample_project)
+
         # Create 5 comments
         for i in range(5):
             comment = Comment(
@@ -212,9 +297,13 @@ class TestCommentEndpoints:
         db: Session,
         ba_user: User,
         ba_token: str,
+        sample_project: Project,
         sample_crs: CRSDocument
     ):
         """Test retrieving a specific comment by ID."""
+        # Assign BA to project
+        self._assign_ba_to_project(db, ba_user, sample_project)
+
         comment = Comment(
             crs_id=sample_crs.id,
             author_id=ba_user.id,
@@ -254,9 +343,13 @@ class TestCommentEndpoints:
         db: Session,
         ba_user: User,
         ba_token: str,
+        sample_project: Project,
         sample_crs: CRSDocument
     ):
         """Test updating a comment by its owner."""
+        # Assign BA to project
+        self._assign_ba_to_project(db, ba_user, sample_project)
+
         comment = Comment(
             crs_id=sample_crs.id,
             author_id=ba_user.id,
@@ -292,9 +385,16 @@ class TestCommentEndpoints:
         ba_user: User,
         client_user: User,
         client_token: str,
+        sample_project: Project,
         sample_crs: CRSDocument
     ):
         """Test that users cannot update comments they don't own."""
+        # Assign BA to project (needed to create comment or just assume existing)
+        # Actually BA needs access to comment, and Client needs access to check.
+        # But verify_ownership comes first usually?
+        # Let's see code: verify_comment_ownership is called first.
+        # Then verify_crs_access.
+        
         comment = Comment(
             crs_id=sample_crs.id,
             author_id=ba_user.id,
@@ -322,9 +422,13 @@ class TestCommentEndpoints:
         db: Session,
         ba_user: User,
         ba_token: str,
+        sample_project: Project,
         sample_crs: CRSDocument
     ):
         """Test deleting a comment by its owner."""
+        # Assign BA to project
+        self._assign_ba_to_project(db, ba_user, sample_project)
+
         comment = Comment(
             crs_id=sample_crs.id,
             author_id=ba_user.id,
@@ -433,9 +537,14 @@ class TestCommentEndpoints:
         self,
         client: TestClient,
         ba_token: str,
-        sample_crs: CRSDocument
+        sample_project: Project,
+        sample_crs: CRSDocument,
+        db: Session,
+        ba_user: User
     ):
         """Test that empty comment content is rejected."""
+        self._assign_ba_to_project(db, ba_user, sample_project)
+        
         payload = {
             "crs_id": sample_crs.id,
             "content": ""
@@ -453,9 +562,14 @@ class TestCommentEndpoints:
         self,
         client: TestClient,
         ba_token: str,
-        sample_crs: CRSDocument
+        sample_project: Project,
+        sample_crs: CRSDocument,
+        db: Session,
+        ba_user: User
     ):
         """Test that comment content exceeding max length is rejected."""
+        self._assign_ba_to_project(db, ba_user, sample_project)
+        
         payload = {
             "crs_id": sample_crs.id,
             "content": "x" * 5001  # Exceeds 5000 character limit

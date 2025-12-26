@@ -100,13 +100,14 @@ def verify_crs_access(db: Session, crs_id: int, user: User) -> CRSDocument:
             detail=f"CRS document with id={crs_id} not found"
         )
     
-    # BAs can access all CRS documents
-    if user.role == UserRole.ba:
+    # Check if user is the creator (always allow creator, regardless of role)
+    if crs.created_by == user.id:
         return crs
-    
-    # Clients can only access CRS documents for their projects
+
+    # For both Clients and BAs, check project/team membership
     from app.models.project import Project
     from app.models.team import TeamMember
+    from app.models.crs import CRSStatus
     
     project = db.query(Project).filter(Project.id == crs.project_id).first()
     if not project:
@@ -116,15 +117,25 @@ def verify_crs_access(db: Session, crs_id: int, user: User) -> CRSDocument:
         )
     
     # Check if user is a member of the project's team
+    # This covers both BAs assigned to the project and Client team members
     is_team_member = db.query(TeamMember).filter(
         TeamMember.team_id == project.team_id,
         TeamMember.user_id == user.id
     ).first()
     
+    # If not a team member and not the project creator either, deny access
     if not is_team_member and project.created_by != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this CRS document"
+        )
+    
+    # Additional restriction for BAs: Cannot access DRAFT CRS documents
+    # BAs only review submitted CRS (under_review, approved, rejected)
+    if user.role == UserRole.ba and crs.status == CRSStatus.draft:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="BAs cannot access draft CRS documents"
         )
     
     return crs
