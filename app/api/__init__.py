@@ -15,4 +15,5 @@ router.include_router(chats.router, prefix="/projects", tags=["chats"])
 router.include_router(exports.router, prefix="/projects", tags=["exports"])
 router.include_router(memory.router, tags=["memory"])
 router.include_router(suggestions.router, tags=["suggestions"])
+router.include_router(comments.router, tags=["comments"])
 
