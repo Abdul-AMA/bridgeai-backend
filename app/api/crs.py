@@ -14,14 +14,13 @@ from app.db.session import get_db
 from app.models.crs import CRSDocument, CRSStatus
 from app.models.user import User, UserRole
 from app.models.project import Project
-from app.services.crs_service import get_latest_crs, persist_crs_document, get_crs_versions, update_crs_status
+from app.services.crs_service import get_latest_crs, persist_crs_document, get_crs_versions, update_crs_status, get_crs_by_id
 from app.services.notification_service import (
     notify_crs_created,
     notify_crs_status_changed,
     notify_crs_approved,
     notify_crs_rejected
 )
-from app.models.project import Project
 from app.schemas.export import ExportFormat
 from app.services.export_service import (
     crs_to_professional_html,
