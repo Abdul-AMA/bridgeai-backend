@@ -35,6 +35,7 @@ class CRSCreate(BaseModel):
 class CRSStatusUpdate(BaseModel):
     """Schema for updating CRS status (approval workflow)."""
     status: str = Field(..., description="New status: draft, under_review, approved, rejected")
+    rejection_reason: Optional[str] = Field(None, description="Reason for rejection (required when rejecting)")
 
 
 class CRSOut(BaseModel):
@@ -46,6 +47,8 @@ class CRSOut(BaseModel):
     summary_points: List[str]
     created_by: Optional[int] = None
     approved_by: Optional[int] = None
+    rejection_reason: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:
@@ -81,6 +84,8 @@ def create_crs(
         summary_points=payload.summary_points,
         created_by=crs.created_by,
         approved_by=crs.approved_by,
+        rejection_reason=crs.rejection_reason,
+        reviewed_at=crs.reviewed_at,
         created_at=crs.created_at,
     )
 
@@ -115,6 +120,8 @@ def read_latest_crs(
         summary_points=summary_points,
         created_by=crs.created_by,
         approved_by=crs.approved_by,
+        rejection_reason=crs.rejection_reason,
+        reviewed_at=crs.reviewed_at,
         created_at=crs.created_at,
     )
 
@@ -189,6 +196,8 @@ def list_crs_for_review(
             summary_points=summary_points,
             created_by=crs.created_by,
             approved_by=crs.approved_by,
+            rejection_reason=crs.rejection_reason,
+            reviewed_at=crs.reviewed_at,
             created_at=crs.created_at,
         ))
     
@@ -223,6 +232,8 @@ def read_crs_versions(
             summary_points=summary_points,
             created_by=crs.created_by,
             approved_by=crs.approved_by,
+            rejection_reason=crs.rejection_reason,
+            reviewed_at=crs.reviewed_at,
             created_at=crs.created_at,
         ))
     return result
@@ -251,6 +262,13 @@ def update_crs_status_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid status. Must be one of: {[s.value for s in CRSStatus]}"
         )
+    
+    # Validate rejection reason is provided when rejecting
+    if new_status == CRSStatus.rejected and not payload.rejection_reason:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Rejection reason is required when rejecting a CRS"
+        )
 
     # Get CRS and verify access
     crs = db.query(CRSDocument).filter(CRSDocument.id == crs_id).first()
@@ -269,6 +287,7 @@ def update_crs_status_endpoint(
         crs_id=crs_id,
         new_status=new_status,
         approved_by=current_user.id if new_status == CRSStatus.approved else None,
+        rejection_reason=payload.rejection_reason if new_status == CRSStatus.rejected else None,
     )
 
     try:
@@ -285,6 +304,8 @@ def update_crs_status_endpoint(
         summary_points=summary_points,
         created_by=updated_crs.created_by,
         approved_by=updated_crs.approved_by,
+        rejection_reason=updated_crs.rejection_reason,
+        reviewed_at=updated_crs.reviewed_at,
         created_at=updated_crs.created_at,
     )
 

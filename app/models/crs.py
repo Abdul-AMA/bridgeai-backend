@@ -23,5 +23,7 @@ class CRSDocument(Base):
     status = Column(Enum(CRSStatus), default=CRSStatus.draft)
     version = Column(Integer, default=1)
     approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    rejection_reason = Column(Text, nullable=True)  # BA feedback when rejecting
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)  # When BA reviewed
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
