@@ -139,6 +139,54 @@ def read_latest_crs(
     )
 
 
+@router.get("/session/{session_id}", response_model=Optional[CRSOut])
+def read_crs_for_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Fetch the CRS document linked to a specific chat session.
+    This allows each chat to have its own independent CRS.
+    """
+    from app.models.session_model import SessionModel
+    
+    # Get the session and verify access
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Verify user has access to this session's project
+    project = get_project_or_404(db, session.project_id)
+    verify_team_membership(db, project.team_id, current_user.id)
+    
+    # If session has a linked CRS, return it
+    if session.crs_document_id:
+        crs = db.query(CRSDocument).filter(CRSDocument.id == session.crs_document_id).first()
+        if crs:
+            try:
+                summary_points = json.loads(crs.summary_points) if crs.summary_points else []
+            except Exception:
+                summary_points = []
+
+            return CRSOut(
+                id=crs.id,
+                project_id=crs.project_id,
+                status=crs.status.value,
+                version=crs.version,
+                content=crs.content,
+                summary_points=summary_points,
+                created_by=crs.created_by,
+                approved_by=crs.approved_by,
+                rejection_reason=crs.rejection_reason,
+                reviewed_at=crs.reviewed_at,
+                created_at=crs.created_at,
+            )
+    
+    # No CRS linked to this session
+    return None
+
+
 @router.get("/review", response_model=List[CRSOut])
 def list_crs_for_review(
     team_id: Optional[int] = Query(None, description="Filter by specific team"),
