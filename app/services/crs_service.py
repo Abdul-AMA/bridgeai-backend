@@ -5,6 +5,7 @@ CRS persistence and indexing helpers.
 import json
 import logging
 from typing import List, Optional
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -98,6 +99,7 @@ def update_crs_status(
     crs_id: int,
     new_status: CRSStatus,
     approved_by: Optional[int] = None,
+    rejection_reason: Optional[str] = None,
 ) -> CRSDocument:
     """
     Update the status of a CRS document.
@@ -107,6 +109,7 @@ def update_crs_status(
         crs_id: ID of the CRS document to update
         new_status: New status to set
         approved_by: User ID of the approver (set when status is 'approved')
+        rejection_reason: Reason for rejection (set when status is 'rejected')
         
     Returns:
         Updated CRSDocument object
@@ -116,8 +119,13 @@ def update_crs_status(
         raise ValueError(f"CRS document with id={crs_id} not found")
 
     crs.status = new_status
+    crs.reviewed_at = datetime.utcnow()
+    
     if approved_by is not None:
         crs.approved_by = approved_by
+    
+    if rejection_reason is not None:
+        crs.rejection_reason = rejection_reason
 
     db.commit()
     db.refresh(crs)

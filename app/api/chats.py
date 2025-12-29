@@ -88,6 +88,7 @@ def get_project_chats(
             id=session.id,
             project_id=session.project_id,
             user_id=session.user_id,
+            crs_document_id=session.crs_document_id,
             name=session.name,
             status=session.status,
             started_at=session.started_at,
@@ -114,6 +115,7 @@ def create_project_chat(
     new_session = SessionModel(
         project_id=project_id,
         user_id=current_user.id,
+        crs_document_id=session_data.crs_document_id,
         name=session_data.name,
         status=SessionStatus.active
     )
@@ -127,6 +129,7 @@ def create_project_chat(
         id=new_session.id,
         project_id=new_session.project_id,
         user_id=new_session.user_id,
+        crs_document_id=new_session.crs_document_id,
         name=new_session.name,
         status=new_session.status,
         started_at=new_session.started_at,
@@ -451,12 +454,21 @@ async def websocket_endpoint(
 
                         # Include CRS metadata if a complete CRS was generated
                         if result.get("crs_is_complete"):
+                            crs_doc_id = result.get("crs_document_id")
                             ai_response_payload["crs"] = {
-                                "crs_document_id": result.get("crs_document_id"),
+                                "crs_document_id": crs_doc_id,
                                 "version": result.get("crs_version"),
                                 "is_complete": True,
                                 "summary_points": result.get("summary_points", []),
                             }
+                            
+                            # Link the CRS document to this chat session
+                            if crs_doc_id:
+                                session = db.query(SessionModel).filter(SessionModel.id == chat_id).first()
+                                if session and not session.crs_document_id:
+                                    session.crs_document_id = crs_doc_id
+                                    db.commit()
+                                    print(f"[WebSocket] Linked CRS {crs_doc_id} to session {chat_id}")
                         
                         await manager.broadcast_to_session(ai_response_payload, chat_id)
                         print(f"[WebSocket] AI response sent: {ai_output}")

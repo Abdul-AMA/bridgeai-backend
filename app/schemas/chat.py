@@ -41,7 +41,7 @@ class SessionBase(BaseModel):
 
 
 class SessionCreate(SessionBase):
-    pass
+    crs_document_id: Optional[int] = None
 
 
 class SessionUpdate(BaseModel):
@@ -53,6 +53,7 @@ class SessionOut(BaseModel):
     id: int
     project_id: int
     user_id: int
+    crs_document_id: Optional[int] = None
     name: str
     status: SessionStatusEnum
     started_at: datetime
@@ -67,6 +68,7 @@ class SessionListOut(BaseModel):
     id: int
     project_id: int
     user_id: int
+    crs_document_id: Optional[int] = None
     name: str
     status: SessionStatusEnum
     started_at: datetime

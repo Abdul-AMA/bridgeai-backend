@@ -8,19 +8,19 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.projects import get_project_or_404, verify_team_membership
+from app.api.projects import get_project_or_404, verify_team_membership, get_user_team_ids, verify_ba_role
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.crs import CRSDocument, CRSStatus
-from app.models.user import User
-from app.services.crs_service import get_latest_crs, persist_crs_document, get_crs_versions, update_crs_status
+from app.models.user import User, UserRole
+from app.models.project import Project
+from app.services.crs_service import get_latest_crs, persist_crs_document, get_crs_versions, update_crs_status, get_crs_by_id
 from app.services.notification_service import (
     notify_crs_created,
     notify_crs_status_changed,
     notify_crs_approved,
     notify_crs_rejected
 )
-from app.models.project import Project
 from app.schemas.export import ExportFormat
 from app.services.export_service import (
     crs_to_professional_html,
@@ -41,6 +41,7 @@ class CRSCreate(BaseModel):
 class CRSStatusUpdate(BaseModel):
     """Schema for updating CRS status (approval workflow)."""
     status: str = Field(..., description="New status: draft, under_review, approved, rejected")
+    rejection_reason: Optional[str] = Field(None, description="Reason for rejection (required when rejecting)")
 
 
 class CRSOut(BaseModel):
@@ -52,6 +53,8 @@ class CRSOut(BaseModel):
     summary_points: List[str]
     created_by: Optional[int] = None
     approved_by: Optional[int] = None
+    rejection_reason: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:
@@ -94,6 +97,8 @@ def create_crs(
         summary_points=payload.summary_points,
         created_by=crs.created_by,
         approved_by=crs.approved_by,
+        rejection_reason=crs.rejection_reason,
+        reviewed_at=crs.reviewed_at,
         created_at=crs.created_at,
     )
 
@@ -128,8 +133,136 @@ def read_latest_crs(
         summary_points=summary_points,
         created_by=crs.created_by,
         approved_by=crs.approved_by,
+        rejection_reason=crs.rejection_reason,
+        reviewed_at=crs.reviewed_at,
         created_at=crs.created_at,
     )
+
+
+@router.get("/session/{session_id}", response_model=Optional[CRSOut])
+def read_crs_for_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Fetch the CRS document linked to a specific chat session.
+    This allows each chat to have its own independent CRS.
+    """
+    from app.models.session_model import SessionModel
+    
+    # Get the session and verify access
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Verify user has access to this session's project
+    project = get_project_or_404(db, session.project_id)
+    verify_team_membership(db, project.team_id, current_user.id)
+    
+    # If session has a linked CRS, return it
+    if session.crs_document_id:
+        crs = db.query(CRSDocument).filter(CRSDocument.id == session.crs_document_id).first()
+        if crs:
+            try:
+                summary_points = json.loads(crs.summary_points) if crs.summary_points else []
+            except Exception:
+                summary_points = []
+
+            return CRSOut(
+                id=crs.id,
+                project_id=crs.project_id,
+                status=crs.status.value,
+                version=crs.version,
+                content=crs.content,
+                summary_points=summary_points,
+                created_by=crs.created_by,
+                approved_by=crs.approved_by,
+                rejection_reason=crs.rejection_reason,
+                reviewed_at=crs.reviewed_at,
+                created_at=crs.created_at,
+            )
+    
+    # No CRS linked to this session
+    return None
+
+
+@router.get("/review", response_model=List[CRSOut])
+def list_crs_for_review(
+    team_id: Optional[int] = Query(None, description="Filter by specific team"),
+    status: Optional[str] = Query(None, description="Filter by status: draft, under_review, approved, rejected"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    List all CRS documents for BA review.
+    Only Business Analysts can access this endpoint.
+    Optionally filter by team and/or status.
+    """
+    # Verify BA role
+    verify_ba_role(current_user)
+    
+    # Determine which teams to query
+    if team_id:
+        # Verify BA is member of the specific team
+        verify_team_membership(db, team_id, current_user.id)
+        team_ids = [team_id]
+    else:
+        # Get all team IDs where BA is a member
+        team_ids = get_user_team_ids(db, current_user.id)
+    
+    # Build query to get CRS documents from projects in BA's teams
+    query = (
+        db.query(CRSDocument)
+        .join(Project, CRSDocument.project_id == Project.id)
+        .filter(Project.team_id.in_(team_ids))
+        # Exclude draft documents - BAs should only see submitted CRS
+        .filter(CRSDocument.status != CRSStatus.draft)
+    )
+    
+    # Apply status filter if provided
+    if status:
+        try:
+            status_enum = CRSStatus(status)
+            # Prevent filtering by draft status
+            if status_enum == CRSStatus.draft:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Business Analysts cannot access draft CRS documents"
+                )
+            query = query.filter(CRSDocument.status == status_enum)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status. Must be one of: {[s.value for s in CRSStatus]}"
+            )
+    
+    # Order by most recent first
+    crs_documents = query.order_by(CRSDocument.created_at.desc()).all()
+    
+    # Convert to response format
+    result = []
+    for crs in crs_documents:
+        try:
+            summary_points = json.loads(crs.summary_points) if crs.summary_points else []
+        except Exception:
+            summary_points = []
+        
+        result.append(CRSOut(
+            id=crs.id,
+            project_id=crs.project_id,
+            status=crs.status.value,
+            version=crs.version,
+            content=crs.content,
+            summary_points=summary_points,
+            created_by=crs.created_by,
+            approved_by=crs.approved_by,
+            rejection_reason=crs.rejection_reason,
+            reviewed_at=crs.reviewed_at,
+            created_at=crs.created_at,
+        ))
+    
+    return result
 
 
 @router.get("/versions", response_model=List[CRSOut])
@@ -160,6 +293,8 @@ def read_crs_versions(
             summary_points=summary_points,
             created_by=crs.created_by,
             approved_by=crs.approved_by,
+            rejection_reason=crs.rejection_reason,
+            reviewed_at=crs.reviewed_at,
             created_at=crs.created_at,
         ))
     return result
@@ -225,6 +360,13 @@ def update_crs_status_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid status. Must be one of: {[s.value for s in CRSStatus]}"
         )
+    
+    # Validate rejection reason is provided when rejecting
+    if new_status == CRSStatus.rejected and not payload.rejection_reason:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Rejection reason is required when rejecting a CRS"
+        )
 
     # Get CRS and verify access
     crs = db.query(CRSDocument).filter(CRSDocument.id == crs_id).first()
@@ -246,6 +388,7 @@ def update_crs_status_endpoint(
         crs_id=crs_id,
         new_status=new_status,
         approved_by=current_user.id if new_status == CRSStatus.approved else None,
+        rejection_reason=payload.rejection_reason if new_status == CRSStatus.rejected else None,
     )
 
     # Notify team members
@@ -274,6 +417,8 @@ def update_crs_status_endpoint(
         summary_points=summary_points,
         created_by=updated_crs.created_by,
         approved_by=updated_crs.approved_by,
+        rejection_reason=updated_crs.rejection_reason,
+        reviewed_at=updated_crs.reviewed_at,
         created_at=updated_crs.created_at,
     )
 
