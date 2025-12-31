@@ -43,6 +43,7 @@ async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
 origins = [
     "http://localhost:3000",  # your frontend React app
     "http://localhost:3001",  # alternative frontend port
+    "https://bridgeai-ai.vercel.app",  # deployed frontend domain
 ]
 
 # ✅ Add CORS middleware only once
