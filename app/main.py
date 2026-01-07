@@ -8,12 +8,14 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.core.config import settings
 from app.core.rate_limit import limiter
+from app.core.middleware import SecurityHeadersMiddleware
 from app.db.session import engine, Base
 from app.api import router as api_router
 from app.api import auth
 from app.api import ai
 from app import __version__
 from app.ai.chroma_manager import initialize_chroma
+from starlette.middleware.base import BaseHTTPMiddleware
 
 # Configure logging
 logging.basicConfig(
@@ -45,13 +47,32 @@ origins = [
     "http://localhost:3001",  # alternative frontend port
 ]
 
+# ✅ Add security headers middleware
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Request size limit middleware
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Limit request body size to 10MB
+        max_size = 10 * 1024 * 1024
+        if request.headers.get("content-length"):
+            content_length = int(request.headers["content-length"])
+            if content_length > max_size:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "Request body too large. Maximum size is 10MB."}
+                )
+        return await call_next(request)
+
+app.add_middleware(RequestSizeLimitMiddleware)
+
 # ✅ Add CORS middleware only once
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # allow GET, POST, PUT, DELETE, OPTIONS
-    allow_headers=["*"],  # allow all headers
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
 )
 
 # Enable WebSocket support
