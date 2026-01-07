@@ -81,10 +81,15 @@ def create_crs(
         summary_points=payload.summary_points,
     )
 
-    # Notify team members
+    # Notify team members - optimized single query
     from app.models.team import TeamMember
-    team_members = db.query(TeamMember).filter(TeamMember.team_id == project.team_id).all()
-    notify_users = [tm.user_id for tm in team_members if tm.user_id != current_user.id]
+    # Single query to get all active team member IDs except current user
+    notify_user_ids = db.query(TeamMember.user_id).filter(
+        TeamMember.team_id == project.team_id,
+        TeamMember.is_active == True,
+        TeamMember.user_id != current_user.id
+    ).all()
+    notify_users = [uid[0] for uid in notify_user_ids]
     
     notify_crs_created(db, crs, project, notify_users, send_email_notification=True)
 
