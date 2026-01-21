@@ -30,4 +30,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade schema - restore crs_pattern column to sessions."""
     # Restore as ENUM column with default value
-    op.execute("ALTER TABLE sessions ADD COLUMN crs_pattern ENUM('iso_iec_ieee_29148', 'ieee_830', 'bakok') NOT NULL DEFAULT 'bakok'")
+    op.execute("ALTER TABLE sessions ADD COLUMN crs_pattern ENUM('iso_iec_ieee_29148', 'ieee_830', 'babok') NOT NULL DEFAULT 'babok'")

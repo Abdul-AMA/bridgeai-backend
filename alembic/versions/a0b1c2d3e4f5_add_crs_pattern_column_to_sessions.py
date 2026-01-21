@@ -21,7 +21,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Upgrade schema - add crs_pattern column to sessions."""
     # Use raw SQL for MySQL ENUM type
-    op.execute("ALTER TABLE sessions ADD COLUMN crs_pattern ENUM('iso_iec_ieee_29148', 'ieee_830', 'bakok') NOT NULL DEFAULT 'bakok'")
+    op.execute("ALTER TABLE sessions ADD COLUMN crs_pattern ENUM('iso_iec_ieee_29148', 'ieee_830', 'babok') NOT NULL DEFAULT 'babok'")
 
 
 def downgrade() -> None:

@@ -30,7 +30,7 @@ def persist_crs_document(
     Embedding storage is optional to allow tests to run without Chroma.
     
     Auto-increments the version number based on existing CRS documents for the project.
-    Pattern defaults to 'bakok' if not specified.
+    Pattern defaults to 'babok' if not specified.
     """
     summary_payload = summary_points or []
     summary_as_text = json.dumps(summary_payload)

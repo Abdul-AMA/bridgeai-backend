@@ -24,7 +24,7 @@ def upgrade() -> None:
     
     # Create ENUM type for CRS patterns - use a database-specific approach
     # MySQL handles ENUM as a native type
-    op.execute("ALTER TABLE crs_documents ADD COLUMN pattern ENUM('iso_iec_ieee_29148', 'ieee_830', 'bakok') NOT NULL DEFAULT 'babok'")
+    op.execute("ALTER TABLE crs_documents ADD COLUMN pattern ENUM('iso_iec_ieee_29148', 'ieee_830', 'babok') NOT NULL DEFAULT 'babok'")
 
 
 def downgrade() -> None:

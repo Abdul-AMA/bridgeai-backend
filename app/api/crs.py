@@ -15,6 +15,7 @@ from app.db.session import get_db
 from app.models.crs import CRSDocument, CRSStatus, CRSPattern
 from app.models.user import User, UserRole
 from app.models.project import Project
+from app.schemas.chat import CRSPatternEnum
 from app.services.crs_service import get_latest_crs, persist_crs_document, get_crs_versions, update_crs_status, get_crs_by_id
 from app.services.notification_service import (
     notify_crs_created,
@@ -40,7 +41,7 @@ class CRSCreate(BaseModel):
     project_id: int
     content: str
     summary_points: List[str] = Field(default_factory=list)
-    pattern: Optional[str] = Field(default="babok", description="CRS pattern: iso_iec_ieee_29148, ieee_830, or babok (default)")
+    pattern: Optional[CRSPatternEnum] = Field(default=CRSPatternEnum.babok, description="CRS pattern: iso_iec_ieee_29148, ieee_830, or babok (default)")
 
 
 class CRSStatusUpdate(BaseModel):
@@ -101,7 +102,7 @@ def create_crs(
         created_by=current_user.id,
         content=payload.content,
         summary_points=payload.summary_points,
-        pattern=payload.pattern,
+        pattern=payload.pattern.value if payload.pattern else "babok",
     )
 
     # Notify team members - optimized single query
@@ -215,7 +216,7 @@ def read_crs_for_session(
                 id=crs.id,
                 project_id=crs.project_id,
                 status=crs.status.value,
-                pattern=crs.pattern.value if crs.pattern else "bakok",
+                pattern=crs.pattern.value if crs.pattern else "babok",
                 version=crs.version,
                 content=crs.content,
                 summary_points=summary_points,
@@ -295,7 +296,7 @@ def list_crs_for_review(
             id=crs.id,
             project_id=crs.project_id,
             status=crs.status.value,
-            pattern=crs.pattern.value if crs.pattern else "bakok",
+            pattern=crs.pattern.value if crs.pattern else "babok",
             version=crs.version,
             content=crs.content,
             summary_points=summary_points,
@@ -377,7 +378,7 @@ def list_my_crs_requests(
             id=crs.id,
             project_id=crs.project_id,
             status=crs.status.value,
-            pattern=crs.pattern.value if crs.pattern else "bakok",
+            pattern=crs.pattern.value if crs.pattern else "babok",
             version=crs.version,
             content=crs.content,
             summary_points=summary_points,
@@ -414,7 +415,7 @@ def read_crs_versions(
             id=crs.id,
             project_id=crs.project_id,
             status=crs.status.value,
-            pattern=crs.pattern.value if crs.pattern else "bakok",
+            pattern=crs.pattern.value if crs.pattern else "babok",
             version=crs.version,
             content=crs.content,
             summary_points=summary_points,
@@ -455,7 +456,7 @@ def read_crs(
         id=crs.id,
         project_id=crs.project_id,
         status=crs.status.value,
-        pattern=crs.pattern.value if crs.pattern else "bakok",
+        pattern=crs.pattern.value if crs.pattern else "babok",
         version=crs.version,
         content=crs.content,
         summary_points=summary_points,
@@ -552,7 +553,7 @@ def update_crs_status_endpoint(
         id=updated_crs.id,
         project_id=updated_crs.project_id,
         status=updated_crs.status.value,
-        pattern=updated_crs.pattern.value if updated_crs.pattern else "bakok",
+        pattern=updated_crs.pattern.value if updated_crs.pattern else "babok",
         version=updated_crs.version,
         content=updated_crs.content,
         summary_points=summary_points,
