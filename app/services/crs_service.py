@@ -22,28 +22,39 @@ def persist_crs_document(
     created_by: int,
     content: str,
     summary_points: Optional[List[str]] = None,
+    field_sources: Optional[dict] = None,
     store_embedding: bool = True,
-    force_draft: bool = False
+    force_draft: bool = False,
+    initial_status: Optional[CRSStatus] = None
 ) -> CRSDocument:
     """
     Persist a CRS document and optionally store it in the semantic memory index.
     Embedding storage is optional to allow tests to run without Chroma.
     
     Auto-increments the version number based on existing CRS documents for the project.
+    initial_status: Optional status to set (defaults to DRAFT)
     """
     summary_payload = summary_points or []
     summary_as_text = json.dumps(summary_payload)
+    
+    field_sources_text = json.dumps(field_sources) if field_sources else None
 
     # Calculate the next version number for this project
     latest = get_latest_crs(db, project_id=project_id)
     next_version = (latest.version + 1) if latest else 1
+
+    # Determine initial status
+    status = initial_status if initial_status is not None else CRSStatus.DRAFT
 
     crs = CRSDocument(
         project_id=project_id,
         created_by=created_by,
         content=content,
         summary_points=summary_as_text,
+        field_sources=field_sources_text,
         version=next_version,
+        edit_version=1,  # Initialize optimistic locking version
+        status=status,
     )
 
     db.add(crs)
@@ -101,9 +112,10 @@ def update_crs_status(
     new_status: CRSStatus,
     approved_by: Optional[int] = None,
     rejection_reason: Optional[str] = None,
+    expected_version: Optional[int] = None,
 ) -> CRSDocument:
     """
-    Update the status of a CRS document.
+    Update the status of a CRS document with optimistic locking support.
     
     Args:
         db: Database session
@@ -111,16 +123,29 @@ def update_crs_status(
         new_status: New status to set
         approved_by: User ID of the approver (set when status is 'approved')
         rejection_reason: Reason for rejection (set when status is 'rejected')
+        expected_version: Expected edit_version for optimistic locking (optional)
         
     Returns:
         Updated CRSDocument object
+        
+    Raises:
+        ValueError: If CRS not found or version mismatch (optimistic locking conflict)
     """
     crs = db.query(CRSDocument).filter(CRSDocument.id == crs_id).first()
     if not crs:
         raise ValueError(f"CRS document with id={crs_id} not found")
+    
+    # Optimistic locking check
+    if expected_version is not None and crs.edit_version != expected_version:
+        raise ValueError(
+            f"CRS document was modified by another user. "
+            f"Expected version {expected_version}, but current version is {crs.edit_version}. "
+            f"Please refresh and try again."
+        )
 
     crs.status = new_status
     crs.reviewed_at = datetime.utcnow()
+    crs.edit_version += 1  # Increment version for next update
     
     if approved_by is not None:
         crs.approved_by = approved_by
@@ -185,7 +210,10 @@ async def generate_preview_crs(db: Session, *, session_id: int, user_id: int) ->
     conversation_history = []
     for msg in messages:
         role = "user" if msg.sender_type == SenderType.client else "assistant"
-        conversation_history.append(f"{role}: {msg.content}")
+        conversation_history.append({
+            "role": role,
+            "content": msg.content
+        })
     
     # Get the last user message
     last_user_message = next(
@@ -223,6 +251,8 @@ async def generate_preview_crs(db: Session, *, session_id: int, user_id: int) ->
         "missing_required_fields": result["missing_required_fields"],
         "missing_optional_fields": result["missing_optional_fields"],
         "filled_optional_count": result["filled_optional_count"],
+        "weak_fields": result.get("weak_fields", []),
+        "field_sources": result.get("field_sources", {}),
         "project_id": session.project_id,
         "session_id": session_id
     }
