@@ -37,6 +37,8 @@ class CRSCreate(BaseModel):
     project_id: int
     content: str
     summary_points: List[str] = Field(default_factory=list)
+    allow_partial: bool = Field(default=False, description="Allow creation with incomplete data (draft status)")
+    completeness_percentage: Optional[int] = Field(None, description="Completeness percentage for partial CRS")
 
 
 class CRSStatusUpdate(BaseModel):
@@ -50,8 +52,10 @@ class CRSOut(BaseModel):
     project_id: int
     status: str
     version: int
+    edit_version: int
     content: str
     summary_points: List[str]
+    field_sources: Optional[dict] = None
     created_by: Optional[int] = None
     approved_by: Optional[int] = None
     rejection_reason: Optional[str] = None
@@ -88,6 +92,8 @@ class CRSPreviewOut(BaseModel):
     missing_required_fields: List[str]
     missing_optional_fields: List[str]
     filled_optional_count: int
+    weak_fields: List[str] = Field(default_factory=list)
+    field_sources: dict = Field(default_factory=dict)
     project_id: int
     session_id: int
 
@@ -104,12 +110,25 @@ def create_crs(
     project = get_project_or_404(db, payload.project_id)
     verify_team_membership(db, project.team_id, current_user.id)
 
+    # Validate minimum threshold for partial CRS
+    if payload.allow_partial:
+        if payload.completeness_percentage is None or payload.completeness_percentage < 40:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot create partial CRS below 40% completion. Please provide more information."
+            )
+        # Force draft status for partial CRS
+        initial_status = CRSStatus.draft
+    else:
+        initial_status = CRSStatus.draft
+
     crs = persist_crs_document(
         db,
         project_id=payload.project_id,
         created_by=current_user.id,
         content=payload.content,
         summary_points=payload.summary_points,
+        initial_status=initial_status,
     )
 
     # Notify team members - optimized single query
@@ -131,18 +150,26 @@ def create_crs(
         action="created",
         new_status=crs.status.value,
         new_content=crs.content,
-        summary="CRS document created"
+        summary=f"CRS document created ({'partial draft' if payload.allow_partial else 'full draft'})"
     )
     db.add(audit_entry)
     db.commit()
+
+    # Parse field_sources if available
+    try:
+        field_sources_data = json.loads(crs.field_sources) if crs.field_sources else None
+    except Exception:
+        field_sources_data = None
 
     return CRSOut(
         id=crs.id,
         project_id=crs.project_id,
         status=crs.status.value,
         version=crs.version,
+        edit_version=crs.edit_version,
         content=crs.content,
         summary_points=payload.summary_points,
+        field_sources=field_sources_data,
         created_by=crs.created_by,
         approved_by=crs.approved_by,
         rejection_reason=crs.rejection_reason,
@@ -172,13 +199,20 @@ def read_latest_crs(
     except Exception:
         summary_points = []
 
+    try:
+        field_sources_data = json.loads(crs.field_sources) if crs.field_sources else None
+    except Exception:
+        field_sources_data = None
+
     return CRSOut(
         id=crs.id,
         project_id=crs.project_id,
         status=crs.status.value,
         version=crs.version,
+        edit_version=crs.edit_version,
         content=crs.content,
         summary_points=summary_points,
+        field_sources=field_sources_data,
         created_by=crs.created_by,
         approved_by=crs.approved_by,
         rejection_reason=crs.rejection_reason,
@@ -217,13 +251,20 @@ def read_crs_for_session(
             except Exception:
                 summary_points = []
 
+            try:
+                field_sources_data = json.loads(crs.field_sources) if crs.field_sources else None
+            except Exception:
+                field_sources_data = None
+
             return CRSOut(
                 id=crs.id,
                 project_id=crs.project_id,
                 status=crs.status.value,
                 version=crs.version,
+                edit_version=crs.edit_version,
                 content=crs.content,
                 summary_points=summary_points,
+                field_sources=field_sources_data,
                 created_by=crs.created_by,
                 approved_by=crs.approved_by,
                 rejection_reason=crs.rejection_reason,
@@ -296,13 +337,20 @@ async def generate_draft_crs_from_session(
         
         notify_crs_created(db, crs, project, notify_users, send_email_notification=True)
         
+        try:
+            field_sources_data = json.loads(crs.field_sources) if crs.field_sources else None
+        except Exception:
+            field_sources_data = None
+
         return CRSOut(
             id=crs.id,
             project_id=crs.project_id,
             status=crs.status.value,
             version=crs.version,
+            edit_version=crs.edit_version,
             content=crs.content,
             summary_points=preview_data["summary_points"],
+            field_sources=field_sources_data,
             created_by=crs.created_by,
             approved_by=crs.approved_by,
             rejection_reason=crs.rejection_reason,
@@ -589,15 +637,24 @@ def read_crs(
     except Exception:
         summary_points = []
     
+    try:
+        field_sources_data = json.loads(crs.field_sources) if crs.field_sources else None
+    except Exception:
+        field_sources_data = None
+
     return CRSOut(
         id=crs.id,
         project_id=crs.project_id,
         status=crs.status.value,
         version=crs.version,
+        edit_version=crs.edit_version,
         content=crs.content,
         summary_points=summary_points,
+        field_sources=field_sources_data,
         created_by=crs.created_by,
         approved_by=crs.approved_by,
+        rejection_reason=crs.rejection_reason,
+        reviewed_at=crs.reviewed_at,
         created_at=crs.created_at,
     )
 
@@ -685,13 +742,20 @@ def update_crs_status_endpoint(
     except Exception:
         summary_points = []
 
+    try:
+        field_sources_data = json.loads(updated_crs.field_sources) if updated_crs.field_sources else None
+    except Exception:
+        field_sources_data = None
+
     return CRSOut(
         id=updated_crs.id,
         project_id=updated_crs.project_id,
         status=updated_crs.status.value,
         version=updated_crs.version,
+        edit_version=updated_crs.edit_version,
         content=updated_crs.content,
         summary_points=summary_points,
+        field_sources=field_sources_data,
         created_by=updated_crs.created_by,
         approved_by=updated_crs.approved_by,
         rejection_reason=updated_crs.rejection_reason,
