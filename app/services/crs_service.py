@@ -44,7 +44,7 @@ def persist_crs_document(
     next_version = (latest.version + 1) if latest else 1
 
     # Determine initial status
-    status = initial_status if initial_status is not None else CRSStatus.DRAFT
+    status = initial_status if initial_status is not None else CRSStatus.draft
 
     crs = CRSDocument(
         project_id=project_id,
