@@ -1,5 +1,6 @@
-from app.services import export_service
 import pytest
+
+from app.services import export_service
 
 
 def test_markdown_export_bytes():
@@ -13,6 +14,7 @@ def test_pdf_export_behavior():
     html = "<p>Hi</p>"
     try:
         import weasyprint  # type: ignore
+
         # If installed, ensure we get bytes back
         pdf = export_service.html_to_pdf_bytes(html)
         assert isinstance(pdf, (bytes, bytearray))

@@ -1,4 +1,3 @@
-from typing import Optional
 import html as html_module
 from datetime import datetime
 
@@ -14,7 +13,7 @@ def markdown_to_html(markdown_text: str) -> str:
     """
     if markdown_text is None:
         markdown_text = ""
-    
+
     # Convert markdown to HTML
     if _md:
         html_content = _md.markdown(markdown_text)
@@ -22,7 +21,7 @@ def markdown_to_html(markdown_text: str) -> str:
         # Fallback: escape and wrap in <pre>
         escaped = html_module.escape(markdown_text)
         html_content = f"<pre>{escaped}</pre>"
-    
+
     # Wrap with proper styling
     styled_html = f"""
     <html>
@@ -122,26 +121,26 @@ def markdown_to_html(markdown_text: str) -> str:
 
 def crs_to_professional_html(content: str, project_name: str = "Project") -> str:
     """Convert CRS Markdown content to a professional, corporate-style HTML document.
-    
+
     Args:
         content: Markdown-formatted CRS content
         project_name: Name of the project for the document header
-        
+
     Returns:
         HTML string with professional formatting suitable for PDF export
     """
     if content is None:
         content = ""
-    
+
     # Convert markdown to HTML
     if _md:
         html_content = _md.markdown(content)
     else:
         escaped = html_module.escape(content)
         html_content = f"<pre>{escaped}</pre>"
-    
+
     current_date = datetime.now().strftime("%B %d, %Y")
-    
+
     # Professional corporate styling for CRS documents - simplified for weasyprint compatibility
     styled_html = f"""<!DOCTYPE html>
 <html>
@@ -374,8 +373,9 @@ def html_to_pdf_bytes(html: str) -> bytes:
     if html is None:
         html = ""
     try:
-        from xhtml2pdf import pisa
         from io import BytesIO
+
+        from xhtml2pdf import pisa
     except Exception as e:
         raise RuntimeError("PDF export requires xhtml2pdf to be installed") from e
 
@@ -487,19 +487,15 @@ def html_to_pdf_bytes(html: str) -> bytes:
     {html}
 </body>
 </html>"""
-        
+
         pdf_buffer = BytesIO()
-        
+
         # Convert HTML to PDF
-        status = pisa.CreatePDF(
-            full_html,
-            pdf_buffer,
-            encoding='UTF-8'
-        )
-        
+        status = pisa.CreatePDF(full_html, pdf_buffer, encoding="UTF-8")
+
         if status.err:
             raise RuntimeError(f"PDF generation failed: {status.err}")
-        
+
         pdf_buffer.seek(0)
         return pdf_buffer.getvalue()
     except Exception as e:

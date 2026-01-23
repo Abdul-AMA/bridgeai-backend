@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field
 from enum import Enum
 from typing import Optional
+
+from pydantic import BaseModel, Field
 
 
 class ExportFormat(str, Enum):
@@ -9,6 +10,8 @@ class ExportFormat(str, Enum):
 
 
 class ExportRequest(BaseModel):
-    filename: Optional[str] = Field(None, description="Desired filename including extension")
+    filename: Optional[str] = Field(
+        None, description="Desired filename including extension"
+    )
     format: ExportFormat = Field(..., description="Export format: markdown or pdf")
     content: Optional[str] = Field(None, description="Content to export")

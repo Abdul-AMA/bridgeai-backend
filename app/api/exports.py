@@ -1,18 +1,19 @@
+import io
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-import io
 
-from app.db.session import get_db
+from app.api.projects import get_project_or_404, verify_team_membership
 from app.core.security import get_current_user
+from app.db.session import get_db
 from app.models.user import User
-from app.schemas.export import ExportRequest, ExportFormat
+from app.schemas.export import ExportFormat, ExportRequest
 from app.services.export_service import (
     export_markdown_bytes,
-    markdown_to_html,
     html_to_pdf_bytes,
+    markdown_to_html,
 )
-from app.api.projects import get_project_or_404, verify_team_membership
 
 router = APIRouter()
 
@@ -42,6 +43,8 @@ def export_project(
     else:
         raise HTTPException(status_code=400, detail="Unsupported format")
 
-    return StreamingResponse(io.BytesIO(data), media_type=media_type, headers={
-        "Content-Disposition": f'attachment; filename="{filename}"'
-    })
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
