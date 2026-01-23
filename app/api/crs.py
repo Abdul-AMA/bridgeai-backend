@@ -129,6 +129,7 @@ def create_crs(
         created_by=current_user.id,
         content=payload.content,
         summary_points=payload.summary_points,
+        field_sources=getattr(payload, 'field_sources', None),
         initial_status=initial_status,
     )
 
@@ -325,6 +326,7 @@ async def generate_draft_crs_from_session(
             created_by=current_user.id,
             content=preview_data["content"],
             summary_points=preview_data["summary_points"],
+            field_sources=preview_data.get("field_sources", {}),
             force_draft=True
         )
         

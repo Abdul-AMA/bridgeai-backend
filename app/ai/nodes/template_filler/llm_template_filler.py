@@ -311,12 +311,16 @@ Return pure JSON now:
                 elif isinstance(current_value, dict):
                     is_new_or_updated = current_value != previous_value
             
-            # Determine source based on quality validation
+            # Determine source based on quality validation and update status
             # High quality = likely explicit user input
             # Low quality = likely LLM inference or weak input
             is_quality = self._validate_field_quality(field_name, current_value)
             
-            if is_quality:
+            # Use both quality and new/updated status to determine source
+            if is_new_or_updated and is_quality:
+                field_sources[field_name] = "explicit_user_input"
+            elif not is_new_or_updated and is_quality:
+                # Content unchanged from previous iteration but still high quality
                 field_sources[field_name] = "explicit_user_input"
             else:
                 field_sources[field_name] = "llm_inference"
