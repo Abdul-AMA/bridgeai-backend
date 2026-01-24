@@ -214,7 +214,7 @@ Return ONLY a valid JSON object:
         {{
             "id": "SRS-001",
             "title": "Verifiable Technical Requirement",
-            "description": "Specific, testable requirement using SHALL/SHOULD/MAY correctly.",
+            "description": "Specific, testable requirement using shall/should/may correctly.",
             "priority": "high"
         }}
     ],
@@ -284,7 +284,7 @@ Return ONLY a valid JSON object:
         {{
             "id": "SYS-001",
             "title": "User Goal or Business Process",
-            "description": "Verifiable requirement organized by user goal using SHALL/SHOULD/MAY correctly.",
+            "description": "Verifiable requirement organized by user goal using shall/should/may correctly.",
             "priority": "high"
         }}
     ],
