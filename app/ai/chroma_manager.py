@@ -29,11 +29,8 @@ def initialize_chroma() -> Tuple[chromadb.Client, Any]:
     """
     Initialize ChromaDB client and collection with embedding function
     
-    CRITICAL: ChromaDB does NOT automatically generate embeddings.
-    You MUST provide an embedding_function explicitly.
-    
     This function:
-    1. Creates persistent client at CHROMA_DB_PATH
+    1. Connects to the remote ChromaDB server via REST API
     2. Configures SentenceTransformerEmbeddingFunction (all-MiniLM-L6-v2)
     3. Loads or creates collection with the embedding function
     4. Sets cosine similarity as distance metric
@@ -41,33 +38,28 @@ def initialize_chroma() -> Tuple[chromadb.Client, Any]:
     
     Returns:
         Tuple[chromadb.Client, chromadb.Collection]
-        - Client: The ChromaDB persistent client
+        - Client: The ChromaDB REST client
         - Collection: The initialized collection with embedding function
-    
-    Timing: Called at app startup (app/main.py)
     
     Raises:
         Exception: If initialization fails
     """
     global _chroma_client, _collection, _is_initialized, _embedding_function
-    
+
     try:
-        # Ensure directory exists
-        chroma_path = settings.CHROMA_DB_PATH
-        os.makedirs(chroma_path, exist_ok=True)
-        logger.debug(f"ChromaDB directory: {os.path.abspath(chroma_path)}")
-        
-        # Create persistent client (file-based storage)
-        _chroma_client = chromadb.PersistentClient(path=chroma_path)
-        logger.debug(f"ChromaDB PersistentClient created")
-        
+        # Create REST API client to connect to the remote server
+        _chroma_client = chromadb.Client(chromadb.config.Settings(
+            chroma_server_host="localhost",  # Replace with your server's IP if remote
+            chroma_server_http_port=8003
+        ))
+        logger.debug("ChromaDB REST client created")
+
         # Create embedding function
-        # CRITICAL: This is required for ChromaDB to generate embeddings
         _embedding_function = SentenceTransformerEmbeddingFunction(
             model_name="all-MiniLM-L6-v2"
         )
-        logger.debug(f"Embedding function configured: all-MiniLM-L6-v2")
-        
+        logger.debug("Embedding function configured: all-MiniLM-L6-v2")
+
         # Load or create collection WITH embedding function
         collection_name = settings.CHROMA_COLLECTION_NAME
         try:
@@ -97,14 +89,14 @@ def initialize_chroma() -> Tuple[chromadb.Client, Any]:
             else:
                 raise e
         logger.debug(f"Collection loaded: {collection_name}")
-        
+
         # Test connection by getting collection count
         test_count = _collection.count()
         _is_initialized = True
-        
+
         logger.info(
             f"ChromaDB initialized successfully\n"
-            f"   Path: {os.path.abspath(chroma_path)}\n"
+            f"   Server: localhost:8003/api/v2\n"
             f"   Collection: {collection_name}\n"
             f"   Current embeddings: {test_count}\n"
             f"   Embedding model: all-MiniLM-L6-v2 (384-dim)\n"
@@ -115,9 +107,9 @@ def initialize_chroma() -> Tuple[chromadb.Client, Any]:
         _is_initialized = False
         logger.error(
             f"Failed to initialize ChromaDB: {str(e)}\n"
-            f"   Path attempted: {settings.CHROMA_DB_PATH}\n"
+            f"   Server: localhost:8003/api/v2\n"
             f"   Collection: {settings.CHROMA_COLLECTION_NAME}\n"
-            f"   Ensure the directory is writable and chromadb is installed"
+            f"   Ensure the server is running and accessible"
         )
         raise
 

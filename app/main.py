@@ -12,6 +12,7 @@ from app.core.middleware import SecurityHeadersMiddleware
 from app.db.session import engine, Base
 from app.api import router as api_router
 from app.api import auth
+from app.api import memory
 from app import __version__
 from app.ai.chroma_manager import initialize_chroma
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -85,6 +86,7 @@ app.add_middleware(
 
 app.include_router(api_router, prefix="/api")
 app.include_router(auth.router)
+app.include_router(memory.router)
 
 @app.get("/")
 def root():
