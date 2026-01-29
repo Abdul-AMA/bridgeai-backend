@@ -8,14 +8,21 @@ from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.notification import Notification, NotificationType
 from app.models.project import Project, ProjectStatus
+from app.models.session_model import SessionModel
+from app.models.message import Message
+from app.models.crs import CRSDocument
+from app.models.ai_memory_index import AIMemoryIndex
 from app.models.team import Team, TeamMember, TeamRole
 from app.models.user import User, UserRole
 from app.schemas.project import (
     ProjectApprovalRequest,
     ProjectCreate,
+    ProjectDashboardStatsOut,
     ProjectOut,
     ProjectRejectionRequest,
     ProjectUpdate,
+    SessionSimpleOut,
+    LatestCRSOut,
 )
 
 router = APIRouter()
@@ -440,3 +447,144 @@ def reject_project(
     db.refresh(project)
 
     return project
+
+
+@router.get("/{project_id}/dashboard/stats", response_model=ProjectDashboardStatsOut)
+def get_project_dashboard_stats(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get aggregated statistics for project dashboard.
+    
+    Returns:
+    - Chat counts by status with total messages
+    - CRS counts by status with latest CRS info
+    - Document counts from memory
+    - Top 5 recent chats
+    """
+    # Get project and verify access
+    project = get_project_or_404(db, project_id)
+    verify_team_membership(db, project.team_id, current_user.id)
+    
+    # Calculate chat statistics
+    chat_stats_query = (
+        db.query(SessionModel.status, func.count(SessionModel.id))
+        .filter(SessionModel.project_id == project_id)
+        .group_by(SessionModel.status)
+        .all()
+    )
+    
+    chat_by_status = {
+        status.value if hasattr(status, 'value') else str(status): count 
+        for status, count in chat_stats_query
+    }
+    chat_total = sum(chat_by_status.values())
+    
+    # Calculate total messages across all chats
+    # Get session IDs for this project, then count messages
+    session_ids = (
+        db.query(SessionModel.id)
+        .filter(SessionModel.project_id == project_id)
+        .subquery()
+    )
+    total_messages = (
+        db.query(func.count(Message.id))
+        .filter(Message.session_id.in_(session_ids))
+        .scalar() or 0
+    )
+    
+    # Calculate CRS statistics
+    crs_stats_query = (
+        db.query(CRSDocument.status, func.count(CRSDocument.id))
+        .filter(CRSDocument.project_id == project_id)
+        .group_by(CRSDocument.status)
+        .all()
+    )
+    
+    crs_by_status = {
+        status.value if hasattr(status, 'value') else str(status): count 
+        for status, count in crs_stats_query
+    }
+    crs_total = sum(crs_by_status.values())
+    
+    # Get latest CRS
+    latest_crs = (
+        db.query(CRSDocument)
+        .filter(CRSDocument.project_id == project_id)
+        .order_by(CRSDocument.created_at.desc())
+        .first()
+    )
+    
+    latest_crs_data = None
+    if latest_crs:
+        latest_crs_data = LatestCRSOut(
+            id=latest_crs.id,
+            version=latest_crs.version,
+            status=latest_crs.status.value if hasattr(latest_crs.status, 'value') else str(latest_crs.status),
+            pattern=latest_crs.pattern.value if hasattr(latest_crs.pattern, 'value') else str(latest_crs.pattern),
+            created_at=latest_crs.created_at
+        )
+    
+    # Get version count
+    version_count = (
+        db.query(func.count(func.distinct(CRSDocument.version)))
+        .filter(CRSDocument.project_id == project_id)
+        .scalar() or 0
+    )
+    
+    # Calculate document statistics from AI memory index
+    document_count = (
+        db.query(func.count(AIMemoryIndex.id))
+        .filter(AIMemoryIndex.project_id == project_id)
+        .scalar() or 0
+    )
+    
+    # Get top 5 recent chats with message count
+    recent_chats_query = (
+        db.query(
+            SessionModel.id,
+            SessionModel.name,
+            SessionModel.status,
+            SessionModel.started_at,
+            SessionModel.ended_at,
+            func.count(Message.id).label('message_count')
+        )
+        .outerjoin(Message, Message.session_id == SessionModel.id)
+        .filter(SessionModel.project_id == project_id)
+        .group_by(SessionModel.id)
+        .order_by(SessionModel.started_at.desc())
+        .limit(5)
+        .all()
+    )
+    
+    recent_chats = [
+        SessionSimpleOut(
+            id=chat.id,
+            name=chat.name,
+            status=chat.status.value if hasattr(chat.status, 'value') else str(chat.status),
+            started_at=chat.started_at,
+            ended_at=chat.ended_at,
+            message_count=chat.message_count or 0
+        )
+        for chat in recent_chats_query
+    ]
+    
+    return ProjectDashboardStatsOut(
+        chats={
+            "total": chat_total,
+            "by_status": chat_by_status,
+            "total_messages": total_messages
+        },
+        crs={
+            "total": crs_total,
+            "by_status": crs_by_status,
+            "latest": latest_crs_data,
+            "version_count": version_count
+        },
+        documents={
+            "total": document_count
+        },
+        recent_chats=recent_chats
+    )
