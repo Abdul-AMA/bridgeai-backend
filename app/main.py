@@ -99,8 +99,6 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api")
-app.include_router(auth.router)
-app.include_router(memory.router)
 
 
 @app.get("/")
