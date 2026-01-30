@@ -20,23 +20,30 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str
     SMTP_FROM_EMAIL: str
     SMTP_FROM_NAME: str = "BridgeAI"
-    # AI settings
-    GROQ_API_KEY: str
-    
+    # AI settings - Claude (Anthropic)
+    ANTHROPIC_API_KEY: str
+
     # LLM Model Configuration
     # Default model for all AI operations (can be overridden per component)
-    LLM_DEFAULT_MODEL: str = "llama-3.3-70b-versatile"
-    
+    # Available Claude 4.5 models:
+    # - claude-sonnet-4-5-20250929 (latest Sonnet 4.5 - best balance)
+    # - claude-haiku-4-5-20251001 (latest Haiku 4.5 - fast & cost-effective)
+    # - claude-opus-4-5-20251101 (latest Opus 4.5 - most capable but expensive)
+    LLM_DEFAULT_MODEL: str = "claude-sonnet-4-5-20250929"
+
     # Component-specific model configurations
-    LLM_CLARIFICATION_MODEL: str = "llama-3.3-70b-versatile"
+    # Clarification needs good reasoning - use Sonnet 4.5
+    LLM_CLARIFICATION_MODEL: str = "claude-sonnet-4-5-20250929"
     LLM_CLARIFICATION_TEMPERATURE: float = 0.3
     LLM_CLARIFICATION_MAX_TOKENS: int = 2048
-    
-    LLM_TEMPLATE_FILLER_MODEL: str = "llama-3.3-70b-versatile"
+
+    # Template Filler needs structured extraction - use Sonnet 4.5
+    LLM_TEMPLATE_FILLER_MODEL: str = "claude-sonnet-4-5-20250929"
     LLM_TEMPLATE_FILLER_TEMPERATURE: float = 0.2
     LLM_TEMPLATE_FILLER_MAX_TOKENS: int = 4096
-    
-    LLM_SUGGESTIONS_MODEL: str = "llama-3.3-70b-versatile"
+
+    # Suggestions can use Haiku 4.5 for speed and cost savings
+    LLM_SUGGESTIONS_MODEL: str = "claude-haiku-4-5-20251001"
     LLM_SUGGESTIONS_TEMPERATURE: float = 0.7
     LLM_SUGGESTIONS_MAX_TOKENS: int = 2000
     
