@@ -40,10 +40,11 @@ class Settings(BaseSettings):
     LLM_SUGGESTIONS_TEMPERATURE: float = 0.7
     LLM_SUGGESTIONS_MAX_TOKENS: int = 2000
     
-    # ChromaDB settings
-    CHROMA_DB_PATH: str = "./chroma_db"
+    # ChromaDB settings (vector database for semantic search)
+    CHROMA_SERVER_HOST: str = "localhost"
+    CHROMA_SERVER_HTTP_PORT: int = 8001
     CHROMA_COLLECTION_NAME: str = "project_memories"
-    EMBEDDING_MODEL: str = "openai"  # or "default" for Chroma's default
+    CHROMA_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"  # 384-dimensional embeddings
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

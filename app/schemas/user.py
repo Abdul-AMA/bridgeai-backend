@@ -48,6 +48,5 @@ class UserOut(BaseModel):
     email: EmailStr
     role: Role
 
-
-class Config:
-    orm_mode = True
+    class Config:
+        from_attributes = True

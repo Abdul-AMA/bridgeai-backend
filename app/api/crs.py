@@ -93,7 +93,7 @@ class CRSOut(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class AuditLogOut(BaseModel):
@@ -109,7 +109,7 @@ class AuditLogOut(BaseModel):
     summary: Optional[str]
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class CRSPreviewOut(BaseModel):

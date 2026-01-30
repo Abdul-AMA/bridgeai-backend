@@ -34,7 +34,7 @@ class CommentOut(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 @router.post("/", response_model=CommentOut, status_code=status.HTTP_201_CREATED)

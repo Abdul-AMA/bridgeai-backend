@@ -56,10 +56,10 @@ def initialize_chroma() -> Tuple[chromadb.Client, Any]:
 
     try:
         # Create REST API client to connect to the remote server
-        _chroma_client = chromadb.Client(chromadb.config.Settings(
-            chroma_server_host="localhost",  # Replace with your server's IP if remote
-            chroma_server_http_port=8003
-        ))
+        _chroma_client = chromadb.HttpClient(
+            host=settings.CHROMA_SERVER_HOST,
+            port=settings.CHROMA_SERVER_HTTP_PORT
+        )
         logger.debug("ChromaDB REST client created")
 
         # Create embedding function
@@ -103,21 +103,19 @@ def initialize_chroma() -> Tuple[chromadb.Client, Any]:
         _is_initialized = True
 
         logger.info(
-            f"ChromaDB initialized successfully\n"
-            f"   Server: localhost:8003/api/v2\n"
-            f"   Collection: {collection_name}\n"
-            f"   Current embeddings: {test_count}\n"
-            f"   Embedding model: all-MiniLM-L6-v2 (384-dim)\n"
-            f"   Distance metric: Cosine similarity"
+            f"ChromaDB initialized successfully | "
+            f"Server: {settings.CHROMA_SERVER_HOST}:{settings.CHROMA_SERVER_HTTP_PORT} | "
+            f"Collection: {collection_name} | "
+            f"Embeddings: {test_count}"
         )
         return _chroma_client, _collection
     except Exception as e:
         _is_initialized = False
         logger.error(
-            f"Failed to initialize ChromaDB: {str(e)}\n"
-            f"   Server: localhost:8003/api/v2\n"
-            f"   Collection: {settings.CHROMA_COLLECTION_NAME}\n"
-            f"   Ensure the server is running and accessible"
+            f"Failed to initialize ChromaDB: {str(e)} | "
+            f"Server: {settings.CHROMA_SERVER_HOST}:{settings.CHROMA_SERVER_HTTP_PORT} | "
+            f"Collection: {settings.CHROMA_COLLECTION_NAME} | "
+            f"Ensure ChromaDB server is running: chroma run --host 0.0.0.0 --port {settings.CHROMA_SERVER_HTTP_PORT}"
         )
         raise
 
