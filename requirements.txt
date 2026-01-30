@@ -18,13 +18,9 @@ slowapi==0.1.9
 pytest
 httpx
 email-validator
-langchain-openai>=0.1.0
 langchain-core>=0.1.0
-openai>=1.0.0
-groq
-langchain-groq
+anthropic>=0.18.0
+langchain-anthropic>=0.1.0
 sentence_transformers
 markdown
 xhtml2pdf
-
-langchain_groq
