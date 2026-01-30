@@ -1,5 +1,8 @@
 # Backend Dockerfile for FastAPI
-FROM python:3.11-slim
+FROM python:3.12-slim
+
+# Avoid debconf warnings
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Build argument to control dependency caching
 # Set to "false" for local dev (uses cache), "true" for VPS (rebuilds)
