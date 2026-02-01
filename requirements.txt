@@ -24,3 +24,5 @@ langchain-anthropic>=0.1.0
 sentence_transformers
 markdown
 xhtml2pdf
+langchain-groq>=0.1.0
+

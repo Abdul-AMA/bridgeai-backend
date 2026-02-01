@@ -413,6 +413,7 @@ async def websocket_endpoint(
 
                 # Broadcast message to all connected clients in this session
                 message_response = {
+                    "type": "message",
                     "id": new_message.id,
                     "session_id": new_message.session_id,
                     "sender_type": new_message.sender_type.value,
@@ -430,6 +431,13 @@ async def websocket_endpoint(
                 if sender_type == SenderType.client:
                     try:
                         print(f"[WebSocket] Invoking AI for message: {content}")
+
+                        # Send thinking status
+                        await manager.broadcast_to_session({
+                            "type": "status",
+                            "status": "thinking",
+                            "is_generating": True
+                        }, chat_id)
 
                         # Fetch conversation history (get last 20 messages)
                         history_messages = (
@@ -497,6 +505,7 @@ async def websocket_endpoint(
                         # Broadcast AI response with optional CRS metadata
                         # CRS metadata is included when the template filler generates a complete CRS
                         ai_response_payload = {
+                            "type": "message",
                             "id": ai_message.id,
                             "session_id": ai_message.session_id,
                             "sender_type": ai_message.sender_type.value,
@@ -505,15 +514,19 @@ async def websocket_endpoint(
                             "timestamp": ai_message.timestamp.isoformat(),
                         }
 
-                        # Include CRS metadata if a complete CRS was generated
+                        # Include CRS metadata if generated
+                        ai_response_payload["crs"] = {
+                            "is_complete": result.get("crs_is_complete", False),
+                            "summary_points": result.get("summary_points", []),
+                            "quality_summary": result.get("quality_summary"),
+                        }
+
                         if result.get("crs_is_complete"):
                             crs_doc_id = result.get("crs_document_id")
-                            ai_response_payload["crs"] = {
+                            ai_response_payload["crs"].update({
                                 "crs_document_id": crs_doc_id,
                                 "version": result.get("crs_version"),
-                                "is_complete": True,
-                                "summary_points": result.get("summary_points", []),
-                            }
+                            })
 
                             # Link the CRS document to this chat session
                             if crs_doc_id:
