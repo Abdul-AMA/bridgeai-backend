@@ -1014,6 +1014,11 @@ Return pure JSON now:
             specificity = self._calculate_specificity_score(field_value)
 
             # Field-specific minimum content requirements
+            if field_name == "project_title":
+                # Project title just needs to be reasonable length (10+ chars)
+                # Don't enforce strict specificity for titles as they're meant to be concise
+                return len(field_value.strip()) >= 10
+
             if field_name in ["project_description"]:
                 # Project description must be at least 50 characters with good specificity
                 return len(field_value.strip()) >= 50 and specificity >= 0.4

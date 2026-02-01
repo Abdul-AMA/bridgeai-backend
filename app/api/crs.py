@@ -1,6 +1,7 @@
 import io
 import json
 from datetime import datetime
+from enum import Enum
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -17,7 +18,7 @@ from app.api.projects import (
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.audit import CRSAuditLog
-from app.models.crs import CRSDocument, CRSStatus
+from app.models.crs import CRSDocument, CRSPattern, CRSStatus
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.export import ExportFormat
@@ -49,6 +50,14 @@ from app.services.notification_service import (
 router = APIRouter()
 
 
+class CRSPatternEnum(str, Enum):
+    """Pydantic enum for CRS patterns."""
+    iso_iec_ieee_29148 = "iso_iec_ieee_29148"
+    ieee_830 = "ieee_830"
+    babok = "babok"
+    agile_user_stories = "agile_user_stories"
+
+
 class CRSCreate(BaseModel):
     project_id: int
     content: str
@@ -60,7 +69,7 @@ class CRSCreate(BaseModel):
         None, description="Completeness percentage for partial CRS"
     )
     session_id: Optional[int] = Field(None, description="Session ID to link the CRS to")
-    pattern: Optional[str] = Field(
+    pattern: Optional[CRSPatternEnum] = Field(
         None, description="CRS Pattern (babok, ieee_830, iso_iec_ieee_29148, agile_user_stories)"
     )
 
