@@ -325,9 +325,9 @@ class TestCRSReview:
     
     def test_get_pending_reviews(self, client, db, client_token, sample_crs_doc, client_user, sample_team):
         """Test getting pending CRS reviews."""
-        # Update user to admin
-        member = db.query(TeamMember).filter_by(user_id=client_user.id, team_id=sample_team.id).first()
-        member.role = "admin"
+        # Update user to BA role (User.role, not TeamMember.role)
+        from app.models.user import UserRole
+        client_user.role = UserRole.ba
         db.commit()
         
         # Update CRS to under_review
