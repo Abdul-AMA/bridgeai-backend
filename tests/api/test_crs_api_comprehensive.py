@@ -12,47 +12,6 @@ from app.models.team import Team, TeamMember
 from app.models.user import User, UserRole
 
 
-@pytest.fixture
-def sample_crs_doc(db, sample_project, client_user):
-    """Create a sample CRS document for testing."""
-    crs = CRSDocument(
-        project_id=sample_project.id,
-        created_by=client_user.id,
-        content=json.dumps({
-            "project_title": "Test Project",
-            "project_description": "Test description",
-            "functional_requirements": [
-                {"id": "FR1", "description": "Test requirement"}
-            ]
-        }),
-        summary_points=["Point 1", "Point 2"],
-        status=CRSStatus.draft,
-        pattern=CRSPattern.ieee_830,
-        version=1,
-        edit_version=1
-    )
-    db.add(crs)
-    db.commit()
-    db.refresh(crs)
-    return crs
-
-
-@pytest.fixture
-def sample_team(db, client_user):
-    """Create a sample team for testing."""
-    team = Team(name="Test Team", created_by=client_user.id)
-    db.add(team)
-    db.commit()
-    db.refresh(team)
-    
-    # Add member
-    member = TeamMember(team_id=team.id, user_id=client_user.id, role="owner")
-    db.add(member)
-    db.commit()
-    
-    return team
-
-
 class TestCRSCreationEdgeCases:
     """Test CRS creation edge cases and error handling."""
 

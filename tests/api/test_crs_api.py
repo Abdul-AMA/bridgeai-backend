@@ -673,19 +673,18 @@ class TestCRSContentUpdate:
 class TestCRSRetrieval:
     """Tests for GET CRS endpoints."""
     
-    def test_get_latest_crs(self, client, client_token, sample_crs, setup_team_project):
+    def test_get_latest_crs(self, client, client_token, sample_crs_doc, sample_project):
         """Test getting latest CRS for a project."""
-        project = setup_team_project["project"]
-        
         response = client.get(
-            f"/api/crs/latest?project_id={project.id}",
+            f"/api/crs/latest?project_id={sample_project.id}",
             headers={"Authorization": f"Bearer {client_token}"}
         )
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert data["id"] == sample_crs.id
-        assert data["project_id"] == project.id
+        assert data is not None, "Expected CRS data but got None"
+        assert data["id"] == sample_crs_doc.id
+        assert data["project_id"] == sample_project.id
     
     def test_get_latest_crs_no_project_id(self, client, client_token):
         """Test getting latest CRS without project_id."""
@@ -851,9 +850,8 @@ class TestCRSReview:
     
     def test_get_pending_reviews(self, client, db, client_token, sample_crs, client_user):
         """Test getting pending CRS reviews."""
-        # Update user to project manager
-        member = db.query(TeamMember).filter_by(user_id=client_user.id).first()
-        member.role = "admin"
+        # Update user to BA role (required for accessing review endpoint)
+        client_user.role = UserRole.ba
         db.commit()
         
         # Update CRS to under_review
