@@ -487,6 +487,14 @@ async def websocket_endpoint(
                         # Invoke graph (using ainvoke if available, otherwise synchronous invoke)
                         # StateGraph usually supports .invoke()
                         result = await ai_graph.ainvoke(state)
+                        
+                        # Defensive handling: ensure result is a dictionary
+                        if isinstance(result, str):
+                            # If result is a string, wrap it
+                            result = {"output": result}
+                        elif not isinstance(result, dict):
+                            # If result is neither string nor dict, create default
+                            result = {"output": "I didn't understand that."}
 
                         ai_output = result.get("output", "I didn't understand that.")
 
@@ -545,6 +553,23 @@ async def websocket_endpoint(
                         await manager.broadcast_to_session(ai_response_payload, chat_id)
                         print(f"[WebSocket] AI response sent: {ai_output}")
 
+                        # ---------------------------------------------------------
+                        # LIVE CRS UPDATE (SSE)
+                        # ---------------------------------------------------------
+                        crs_template = result.get("crs_template")
+                        if crs_template:
+                            try:
+                                from app.core.events import event_bus
+                                await event_bus.publish(chat_id, {
+                                    "type": "crs_update",
+                                    "crs_template": crs_template,
+                                    "is_complete": result.get("crs_is_complete", False),
+                                    "summary_points": result.get("summary_points", [])
+                                })
+                                print(f"[WebSocket] Published live CRS update for session {chat_id}")
+                            except Exception as e:
+                                print(f"[WebSocket] Failed to publish CRS update: {str(e)}")
+
                         # Count total messages to verify storage
                         total_msg_count = (
                             db.query(Message)
@@ -556,7 +581,10 @@ async def websocket_endpoint(
                         )
 
                     except Exception as e:
+                        import traceback
+                        error_traceback = traceback.format_exc()
                         print(f"[WebSocket] AI generation error: {str(e)}")
+                        print(f"[WebSocket] Full traceback:\n{error_traceback}")
                         # Optionally send error to client or just log it
 
             except json.JSONDecodeError:

@@ -394,6 +394,23 @@ CRITICAL INSTRUCTIONS - READ CAREFULLY:
 6. For functional requirements, ONLY include features the user specifically requested
 7. Project description should summarize what the user said, not what you think the project should be
 
+EXAMPLES OF WHAT NOT TO DO:
+❌ User says: "I want to build a new app"
+   WRONG: Extracting "GDPR compliance", "10,000 concurrent users", "in-app purchases"
+   CORRECT: Leave most fields EMPTY except project_title: "New App Development"
+
+❌ User says: "I need a website"
+   WRONG: Assuming "responsive design", "SEO optimization", "contact form"
+   CORRECT: Only extract "website" as the deliverable, leave requirements EMPTY
+
+❌ User says: "Build an e-commerce platform"
+   WRONG: Adding "payment gateway", "shopping cart", "user authentication" without being told
+   CORRECT: Only extract "e-commerce platform" as title, wait for user to specify features
+
+CRITICAL: If the user provides vague or minimal information (like "I want to build an app"), 
+you should extract ONLY what they said and leave 90% of fields EMPTY. This is EXPECTED and CORRECT behavior.
+Do NOT try to "help" by filling in assumed requirements.
+
 USER'S LATEST INPUT:
 {user_input}
 
@@ -436,7 +453,7 @@ QUALITY STANDARDS - REJECT VAGUE CONTENT:
 - Target users: Minimum 15 words per user type with characteristics
 
 CRITICAL: If the user's information is vague or lacks detail, leave that field EMPTY or mark it as incomplete.
-Do NOT fill fields with generic or assumed content.
+Do NOT fill fields with generic or assumed content. EMPTY FIELDS ARE BETTER THAN HALLUCINATED CONTENT.
 
 Return ONLY a valid JSON object (no markdown, no code blocks):
 {{
@@ -949,8 +966,22 @@ Return pure JSON now:
 
         # Get the last AI message
         for message in reversed(conversation_history):
-            if message.get("role") == "assistant":
+            # Handle both string format ("AI: content") and dict format ({"role": "assistant", "content": "..."})
+            if isinstance(message, dict):
+                role = message.get("role", "")
                 content = message.get("content", "")
+            elif isinstance(message, str):
+                # Parse string format "Role: content"
+                if ":" in message:
+                    role_part, content = message.split(":", 1)
+                    role = "assistant" if role_part.strip().lower() in ["ai", "assistant"] else "user"
+                    content = content.strip()
+                else:
+                    continue
+            else:
+                continue
+            
+            if role == "assistant":
                 # Count question marks
                 question_count = content.count("?")
                 # Check for clarification keywords
@@ -1280,31 +1311,59 @@ Return pure JSON now:
             )
             return has_any_content
 
-        # Strict mode: enforce all completeness criteria
-        essential_filled = all(
-            [
-                template.project_title,
-                template.project_description,
-                len(template.functional_requirements) > 0,
-            ]
+        # Strict mode: enforce all completeness criteria with quality checks
+        
+        # Check essential fields exist AND have substantial content
+        has_substantial_title = (
+            template.project_title 
+            and len(template.project_title.strip()) >= 10
+            and template.project_title.lower() not in ["new app", "new app development", "app", "website", "platform"]
         )
+        
+        has_substantial_description = (
+            template.project_description 
+            and len(template.project_description.strip()) >= 100  # Minimum 100 characters
+            and not any(vague in template.project_description.lower() for vague in [
+                "improve customer engagement",
+                "increase revenue", 
+                "user-friendly interface",
+                "seamless experience"
+            ])
+        )
+        
+        # Require at least 3 functional requirements with detailed descriptions
+        has_quality_requirements = (
+            len(template.functional_requirements) >= 3
+            and all(
+                len(req.get("description", "")) >= 30  # Each requirement needs 30+ char description
+                for req in template.functional_requirements
+            )
+        )
+        
+        essential_filled = all([
+            has_substantial_title,
+            has_substantial_description,
+            has_quality_requirements,
+        ])
 
         # Count how many optional fields are filled
         optional_filled = sum(
             [
-                len(template.project_objectives) > 0,
-                len(template.target_users) > 0,
+                len(template.project_objectives) >= 2,  # At least 2 objectives
+                len(template.target_users) >= 1,
                 bool(
                     template.timeline_constraints
                     and template.timeline_constraints != "Not specified"
+                    and len(template.timeline_constraints) >= 40
                 ),
                 bool(
                     template.budget_constraints
                     and template.budget_constraints != "Not specified"
+                    and len(template.budget_constraints) >= 50
                 ),
                 len(template.success_metrics) > 0,
             ]
         )
 
-        # Consider complete if essentials are filled and at least 2 optional fields
-        return essential_filled and optional_filled >= 2
+        # Consider complete if essentials are filled AND at least 3 optional fields
+        return essential_filled and optional_filled >= 3

@@ -43,21 +43,40 @@ def create_graph():
     graph.set_entry_point("clarification")
 
     # ----------------------------
-    # CONDITIONAL ROUTING LOGIC
+    # CLARIFICATION -> TEMPLATE FILLER (always for requirements)
     # ----------------------------
+    def route_after_clarification(state: AgentState):
+        intent = state.get("intent", "requirement")
+        if intent != "requirement":
+            return END
+        return "template_filler"
+
     graph.add_conditional_edges(
         "clarification",
-        should_request_clarification,  # function returns: True or False
+        route_after_clarification,
         {
-            True: END,  # If clarification needed → stop workflow
-            False: "template_filler",  # Otherwise continue to template filler
-        },
+            END: END,
+            "template_filler": "template_filler"
+        }
     )
 
     # ----------------------------
-    # TEMPLATE FILLER → MEMORY
+    # TEMPLATE FILLER -> MEMORY or END
     # ----------------------------
-    graph.add_edge("template_filler", "memory")
+    def route_after_filler(state: AgentState):
+        needs_clarification = state.get("needs_clarification", False)
+        if needs_clarification:
+            return END
+        return "memory"
+
+    graph.add_conditional_edges(
+        "template_filler",
+        route_after_filler,
+        {
+            END: END,
+            "memory": "memory"
+        }
+    )
 
     # ----------------------------
     # MEMORY → SUGGESTIONS (conditional)
