@@ -136,7 +136,7 @@ def ba_auth_headers(client: TestClient, test_ba_user: User) -> Dict[str, str]:
     Get authentication headers for BA user.
     """
     response = client.post(
-        "/auth/token",
+        "/api/auth/token",
         data={"username": test_ba_user.email, "password": "TestPassword123!"},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
@@ -151,7 +151,7 @@ def client_auth_headers(client: TestClient, test_client_user: User) -> Dict[str,
     Get authentication headers for Client user.
     """
     response = client.post(
-        "/auth/token",
+        "/api/auth/token",
         data={"username": test_client_user.email, "password": "TestPassword123!"},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
@@ -168,7 +168,7 @@ def another_client_auth_headers(
     Get authentication headers for another Client user.
     """
     response = client.post(
-        "/auth/token",
+        "/api/auth/token",
         data={
             "username": test_another_client_user.email,
             "password": "TestPassword123!",
@@ -223,7 +223,7 @@ def client_user(db: Session) -> User:
 def ba_token(client: TestClient, ba_user: User) -> str:
     """Get authentication token for BA user."""
     response = client.post(
-        "/auth/token",
+        "/api/auth/token",
         data={"username": ba_user.email, "password": "TestPassword123!"},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
@@ -235,7 +235,7 @@ def ba_token(client: TestClient, ba_user: User) -> str:
 def client_token(client: TestClient, client_user: User) -> str:
     """Get authentication token for client user."""
     response = client.post(
-        "/auth/token",
+        "/api/auth/token",
         data={"username": client_user.email, "password": "TestPassword123!"},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
@@ -324,7 +324,7 @@ def rate_limit_ba_auth_headers(
 ) -> Dict[str, str]:
     """Get authentication headers for BA user with rate limiting enabled."""
     response = rate_limit_client.post(
-        "/auth/token",
+        "/api/auth/token",
         data={"username": test_ba_user.email, "password": "TestPassword123!"},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
@@ -339,7 +339,7 @@ def rate_limit_client_auth_headers(
 ) -> Dict[str, str]:
     """Get authentication headers for Client user with rate limiting enabled."""
     response = rate_limit_client.post(
-        "/auth/token",
+        "/api/auth/token",
         data={"username": test_client_user.email, "password": "TestPassword123!"},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )

@@ -3,7 +3,10 @@ Tests for memory system (MySQL + ChromaDB integration)
 """
 
 import pytest
+from unittest.mock import MagicMock, patch
 from sqlalchemy.orm import Session
+import chromadb
+from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
 from app.ai.memory_service import (
     create_memory,
@@ -14,13 +17,30 @@ from app.ai.memory_service import (
 )
 from app.db.session import SessionLocal
 
-
 @pytest.fixture
 def db():
     """Get database session"""
     db = SessionLocal()
     yield db
     db.close()
+
+@pytest.fixture(autouse=True)
+def mock_chroma():
+    """Mock ChromaDB to use in-memory EphemeralClient"""
+    # Create an ephemeral client
+    ephemeral_client = chromadb.EphemeralClient()
+    
+    # We need to make sure the collection exists or is created with the right embedding function
+    # Because app code calls get_or_create_collection with an embedding function.
+    
+    # Patch HttpClient to return our ephemeral client
+    with patch("app.ai.chroma_manager.chromadb.HttpClient", return_value=ephemeral_client):
+        # Also need to reset the global _is_initialized in chroma_manager so it re-initializes with our mock
+        with patch("app.ai.chroma_manager._is_initialized", False):
+            with patch("app.ai.chroma_manager._chroma_client", None):
+                with patch("app.ai.chroma_manager._collection", None):
+                    yield ephemeral_client
+
 
 
 class TestMemoryService:
