@@ -8,3 +8,4 @@ from .project import Project
 from .session_model import SessionModel
 from .team import Team, TeamMember
 from .user import User
+from .user_otp import UserOTP

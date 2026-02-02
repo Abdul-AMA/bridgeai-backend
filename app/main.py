@@ -91,9 +91,7 @@ app.add_middleware(RequestSizeLimitMiddleware)
 # ✅ Add CORS middleware only once
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "*"
-    ],  # For your project grade, "*" is the safest to avoid CORS errors
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],

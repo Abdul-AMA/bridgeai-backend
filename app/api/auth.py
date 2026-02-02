@@ -7,7 +7,7 @@ from app.core.security import create_access_token, get_current_user
 from app.db.session import get_db
 from app.models.user import User, UserRole
 from app.schemas.token import Token
-from app.schemas.user import UserCreate, UserOut
+from app.schemas.user import UserCreate, UserOut, ForgotPasswordRequest, VerifyOTPRequest, ResetPasswordRequest
 from app.utils.hash import hash_password, verify_password
 from google.oauth2 import id_token
 from google.auth.transport import requests
@@ -174,3 +174,119 @@ def get_user_by_id(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
     return user
+
+
+@router.post("/forgot-password")
+@limiter.limit("3/minute")
+def forgot_password(
+    request: Request,
+    data: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """Step 1: Check email and send OTP."""
+    # Check if user exists
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This email is not registered with BridgeAI."
+        )
+
+    # Generate 6-digit OTP
+    import random
+    import string
+    from datetime import datetime, timedelta
+    from app.models.user_otp import UserOTP
+    from app.utils.email import send_password_reset_email
+
+    otp_code = "".join(random.choices(string.digits, k=6))
+    expires_at = datetime.utcnow() + timedelta(minutes=15)
+
+    # Store in DB (delete old ones first)
+    db.query(UserOTP).filter(UserOTP.email == data.email).delete()
+    
+    db_otp = UserOTP(
+        email=data.email,
+        otp_code=otp_code,
+        expires_at=expires_at
+    )
+    db.add(db_otp)
+    db.commit()
+
+    # Send email
+    send_password_reset_email(data.email, otp_code)
+
+    return {"message": "Verification code sent to your email."}
+
+
+@router.post("/verify-otp")
+@limiter.limit("5/minute")
+def verify_otp(
+    request: Request,
+    data: VerifyOTPRequest,
+    db: Session = Depends(get_db),
+):
+    """Step 2: Verify the OTP code."""
+    from app.models.user_otp import UserOTP
+
+    db_otp = db.query(UserOTP).filter(
+        UserOTP.email == data.email,
+        UserOTP.otp_code == data.otp_code
+    ).first()
+
+    if not db_otp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification code."
+        )
+
+    if db_otp.is_expired:
+        db.delete(db_otp)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification code has expired."
+        )
+
+    return {"message": "Verification successful."}
+
+
+@router.post("/reset-password")
+@limiter.limit("3/minute")
+def reset_password(
+    request: Request,
+    data: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """Step 3: Reset the password after verification."""
+    from app.models.user_otp import UserOTP
+
+    # 1. Verify OTP again (stateless verification for the final step)
+    db_otp = db.query(UserOTP).filter(
+        UserOTP.email == data.email,
+        UserOTP.otp_code == data.otp_code
+    ).first()
+
+    if not db_otp or db_otp.is_expired:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification session."
+        )
+
+    # 2. Get User
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found."
+        )
+
+    # 3. Update Password
+    user.password_hash = hash_password(data.new_password)
+    
+    # 4. Clean up OTP
+    db.delete(db_otp)
+    
+    db.commit()
+
+    return {"message": "Password reset successfully. You can now log in."}
