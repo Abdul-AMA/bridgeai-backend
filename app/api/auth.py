@@ -29,7 +29,13 @@ def google_login(
         
         # Verify the token
         # strictly verify the token is intended for our app
-        id_info = id_token.verify_oauth2_token(login_data.token, requests.Request(), CLIENT_ID)
+        # Add clock_skew_in_seconds to handle small time differences between client and server
+        id_info = id_token.verify_oauth2_token(
+            login_data.token, 
+            requests.Request(), 
+            CLIENT_ID,
+            clock_skew_in_seconds=10  # Allow 10 seconds of clock skew tolerance
+        )
 
         # Get user info
         email = id_info.get("email")
