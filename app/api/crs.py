@@ -1232,13 +1232,46 @@ async def stream_crs_updates(
 
     async def event_generator():
         from app.core.events import event_bus
+        import asyncio
+        
         print(f"[SSE] Client connected to live CRS stream for session {session_id}")
+        
+        # Send initial connection confirmation
+        yield f"data: {json.dumps({'type': 'connected', 'session_id': session_id})}\n\n"
+        
         try:
-            async for event in event_bus.subscribe(session_id):
-                yield f"data: {json.dumps(event)}\n\n"
+            # Create subscription queue
+            queue = asyncio.Queue()
+            event_bus.subscribers[session_id].add(queue)
+            
+            try:
+                while True:
+                    try:
+                        # Wait for event with timeout for keepalive pings
+                        event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                        yield f"data: {json.dumps(event)}\n\n"
+                    except asyncio.TimeoutError:
+                        # Send keepalive ping every 30 seconds
+                        yield f": keepalive\n\n"
+            finally:
+                # Cleanup subscription
+                event_bus.subscribers[session_id].discard(queue)
+                if not event_bus.subscribers[session_id]:
+                    del event_bus.subscribers[session_id]
+                    
+        except asyncio.CancelledError:
+            print(f"[SSE] Stream cancelled for session {session_id}")
         except Exception as e:
             print(f"[SSE] Stream error for session {session_id}: {str(e)}")
         finally:
             print(f"[SSE] Client disconnected from live CRS stream for session {session_id}")
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        }
+    )
