@@ -12,6 +12,13 @@ class SessionStatus(enum.Enum):
     completed = "completed"
 
 
+class CRSGenerationStatus(enum.Enum):
+    idle = "idle"
+    queued = "queued"
+    generating = "generating"
+    complete = "complete"
+    error = "error"
+
 
 class SessionModel(Base):
     __tablename__ = "sessions"
@@ -28,6 +35,15 @@ class SessionModel(Base):
     crs_pattern = Column(String(50), nullable=True, default="babok")
     name = Column(String(255), nullable=False)
     status = Column(Enum(SessionStatus), default=SessionStatus.active)
+    
+    # Background CRS generation tracking
+    crs_generation_status = Column(
+        Enum(CRSGenerationStatus), 
+        default=CRSGenerationStatus.idle,
+        nullable=False
+    )
+    crs_progress_percentage = Column(Integer, default=0)
+    crs_last_generated_at = Column(DateTime(timezone=True), nullable=True)
     
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     ended_at = Column(DateTime(timezone=True), nullable=True)
