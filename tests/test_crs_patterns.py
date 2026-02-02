@@ -36,232 +36,232 @@ class TestCRSPatternDefinitions:
 class TestLLMTemplateFillerPatterns:
     """Test LLMTemplateFiller pattern selection and prompt generation."""
     
-    @patch('app.ai.nodes.template_filler.llm_template_filler.ChatGroq')
-    def test_template_filler_default_pattern(self, mock_groq):
+    @patch('app.ai.nodes.template_filler.llm_template_filler.get_template_filler_llm')
+    def test_template_filler_default_pattern(self, mock_llm):
         """Test default pattern selection (BABOK)."""
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'}):
-            filler = LLMTemplateFiller()
-            assert filler.pattern == 'babok'
+        mock_llm.return_value = Mock()
+        filler = LLMTemplateFiller()
+        assert filler.pattern == 'babok'
     
-    @patch('app.ai.nodes.template_filler.llm_template_filler.ChatGroq')
-    def test_template_filler_ieee830_pattern(self, mock_groq):
+    @patch('app.ai.nodes.template_filler.llm_template_filler.get_template_filler_llm')
+    def test_template_filler_ieee830_pattern(self, mock_llm):
         """Test IEEE 830 pattern selection."""
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'}):
-            filler = LLMTemplateFiller(pattern='ieee_830')
-            assert filler.pattern == 'ieee_830'
+        mock_llm.return_value = Mock()
+        filler = LLMTemplateFiller(pattern='ieee_830')
+        assert filler.pattern == 'ieee_830'
     
-    @patch('app.ai.nodes.template_filler.llm_template_filler.ChatGroq')
-    def test_template_filler_iso29148_pattern(self, mock_groq):
+    @patch('app.ai.nodes.template_filler.llm_template_filler.get_template_filler_llm')
+    def test_template_filler_iso29148_pattern(self, mock_llm):
         """Test ISO/IEC/IEEE 29148 pattern selection."""
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'}):
-            filler = LLMTemplateFiller(pattern='iso_iec_ieee_29148')
-            assert filler.pattern == 'iso_iec_ieee_29148'
+        mock_llm.return_value = Mock()
+        filler = LLMTemplateFiller(pattern='iso_iec_ieee_29148')
+        assert filler.pattern == 'iso_iec_ieee_29148'
     
-    @patch('app.ai.nodes.template_filler.llm_template_filler.ChatGroq')
-    def test_babok_prompt_contains_babok_keywords(self, mock_groq):
+    @patch('app.ai.nodes.template_filler.llm_template_filler.get_template_filler_llm')
+    def test_babok_prompt_contains_babok_keywords(self, mock_llm):
         """Verify BABOK prompt contains BABOK-specific terminology."""
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'}):
-            filler = LLMTemplateFiller(pattern='babok')
-            prompt_text = filler.BABOK_EXTRACTION_PROMPT
-            prompt_upper = prompt_text.upper()
-            
-            # Check for BABOK-specific terms
-            assert 'BABOK' in prompt_upper
-            assert 'BUSINESS ANALYSIS BODY OF KNOWLEDGE' in prompt_upper
-            assert 'BUSINESS NEED' in prompt_upper
-            assert 'STAKEHOLDERS' in prompt_upper
-            assert 'CURRENT STATE' in prompt_upper and 'FUTURE STATE' in prompt_upper
-            assert 'SOLUTION SCOPE' in prompt_upper
-            assert 'BUSINESS VALUE' in prompt_upper
+        mock_llm.return_value = Mock()
+        filler = LLMTemplateFiller(pattern='babok')
+        prompt_text = filler.BABOK_EXTRACTION_PROMPT
+        prompt_upper = prompt_text.upper()
+        
+        # Check for BABOK-specific terms
+        assert 'BABOK' in prompt_upper
+        assert 'BUSINESS ANALYSIS BODY OF KNOWLEDGE' in prompt_upper
+        assert 'BUSINESS NEED' in prompt_upper
+        assert 'STAKEHOLDERS' in prompt_upper
+        assert 'CURRENT STATE' in prompt_upper and 'FUTURE STATE' in prompt_upper
+        assert 'SOLUTION SCOPE' in prompt_upper
+        assert 'BUSINESS VALUE' in prompt_upper
     
-    @patch('app.ai.nodes.template_filler.llm_template_filler.ChatGroq')
-    def test_ieee830_prompt_contains_ieee_keywords(self, mock_groq):
+    @patch('app.ai.nodes.template_filler.llm_template_filler.get_template_filler_llm')
+    def test_ieee830_prompt_contains_ieee_keywords(self, mock_llm):
         """Verify IEEE 830 prompt contains IEEE 830-specific terminology."""
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'}):
-            filler = LLMTemplateFiller(pattern='ieee_830')
-            prompt_text = filler.IEEE830_EXTRACTION_PROMPT
-            
-            # Check for IEEE 830-specific terms
-            assert 'IEEE 830' in prompt_text or 'IEEE830' in prompt_text
-            assert 'Software Requirements Specification' in prompt_text or 'SRS' in prompt_text
-            assert 'Introduction' in prompt_text
-            assert 'Overall Description' in prompt_text
-            assert 'Specific Requirements' in prompt_text
-            assert 'verifiable' in prompt_text.lower()
-            assert 'testable' in prompt_text.lower()
+        mock_llm.return_value = Mock()
+        filler = LLMTemplateFiller(pattern='ieee_830')
+        prompt_text = filler.IEEE830_EXTRACTION_PROMPT
+        
+        # Check for IEEE 830-specific terms
+        assert 'IEEE 830' in prompt_text or 'IEEE830' in prompt_text
+        assert 'Software Requirements Specification' in prompt_text or 'SRS' in prompt_text
+        assert 'Introduction' in prompt_text
+        assert 'Overall Description' in prompt_text
+        assert 'Specific Requirements' in prompt_text
+        assert 'verifiable' in prompt_text.lower()
+        assert 'testable' in prompt_text.lower()
     
-    @patch('app.ai.nodes.template_filler.llm_template_filler.ChatGroq')
-    def test_iso29148_prompt_contains_iso_keywords(self, mock_groq):
+    @patch('app.ai.nodes.template_filler.llm_template_filler.get_template_filler_llm')
+    def test_iso29148_prompt_contains_iso_keywords(self, mock_llm):
         """Verify ISO 29148 prompt contains ISO-specific terminology."""
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'}):
-            filler = LLMTemplateFiller(pattern='iso_iec_ieee_29148')
-            prompt_text = filler.ISO29148_EXTRACTION_PROMPT
-            
-            # Check for ISO 29148-specific terms
-            assert 'ISO' in prompt_text or 'IEC' in prompt_text
-            assert '29148' in prompt_text
-            assert 'Operational Concepts' in prompt_text
-            assert 'System Requirements' in prompt_text
-            assert 'Quality Attributes' in prompt_text
-            assert 'Interface Requirements' in prompt_text
-            assert 'Verification Criteria' in prompt_text
+        mock_llm.return_value = Mock()
+        filler = LLMTemplateFiller(pattern='iso_iec_ieee_29148')
+        prompt_text = filler.ISO29148_EXTRACTION_PROMPT
+        
+        # Check for ISO 29148-specific terms
+        assert 'ISO' in prompt_text or 'IEC' in prompt_text
+        assert '29148' in prompt_text
+        assert 'Operational Concepts' in prompt_text
+        assert 'System Requirements' in prompt_text
+        assert 'Quality Attributes' in prompt_text
+        assert 'Interface Requirements' in prompt_text
+        assert 'Verification Criteria' in prompt_text
 
 
 class TestCRSPatternFlow:
     """Test end-to-end CRS generation flow with different patterns."""
     
-    @patch('app.ai.nodes.template_filler.llm_template_filler.ChatGroq')
-    def test_babok_pattern_extraction_flow(self, mock_groq):
+    @patch('app.ai.nodes.template_filler.llm_template_filler.get_template_filler_llm')
+    def test_babok_pattern_extraction_flow(self, mock_llm):
         """Test full extraction flow with BABOK pattern."""
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'}):
-            # Mock LLM response
-            mock_response = Mock()
-            mock_response.content = json.dumps({
-                "project_title": "E-Commerce Platform",
-                "project_description": "A comprehensive online shopping platform for retail businesses.",
-                "project_objectives": ["Increase online sales", "Improve customer experience"],
-                "target_users": ["Retail customers", "Business owners"],
-                "functional_requirements": [
-                    {
-                        "id": "BR-001",
-                        "title": "Product Catalog",
-                        "description": "System must provide a searchable product catalog.",
-                        "priority": "high"
-                    }
-                ],
-                "stakeholders": ["Business owners", "Customers"],
-                "performance_requirements": [],
-                "security_requirements": [],
-                "scalability_requirements": [],
-                "technology_stack": {},
-                "integrations": [],
-                "budget_constraints": "",
-                "timeline_constraints": "",
-                "technical_constraints": [],
-                "success_metrics": [],
-                "acceptance_criteria": [],
-                "assumptions": [],
-                "risks": [],
-                "out_of_scope": []
-            })
+        mock_llm.return_value = Mock()
+        # Mock LLM response
+        mock_response = Mock()
+        mock_response.content = json.dumps({
+            "project_title": "E-Commerce Platform",
+            "project_description": "A comprehensive online shopping platform for retail businesses.",
+            "project_objectives": ["Increase online sales", "Improve customer experience"],
+            "target_users": ["Retail customers", "Business owners"],
+            "functional_requirements": [
+                {
+                    "id": "BR-001",
+                    "title": "Product Catalog",
+                    "description": "System must provide a searchable product catalog.",
+                    "priority": "high"
+                }
+            ],
+            "stakeholders": ["Business owners", "Customers"],
+            "performance_requirements": [],
+            "security_requirements": [],
+            "scalability_requirements": [],
+            "technology_stack": {},
+            "integrations": [],
+            "budget_constraints": "",
+            "timeline_constraints": "",
+            "technical_constraints": [],
+            "success_metrics": [],
+            "acceptance_criteria": [],
+            "assumptions": [],
+            "risks": [],
+            "out_of_scope": []
+        })
             
-            mock_groq_instance = MagicMock()
-            mock_groq_instance.invoke.return_value = mock_response
-            mock_groq.return_value = mock_groq_instance
+        mock_llm_instance = MagicMock()
+        mock_llm_instance.invoke.return_value = mock_response
+        mock_llm.return_value = mock_llm_instance
             
-            filler = LLMTemplateFiller(pattern='babok')
-            result = filler.extract_requirements(
+        filler = LLMTemplateFiller(pattern='babok')
+        result = filler.extract_requirements(
                 user_input="I need an e-commerce platform",
                 conversation_history=[],
                 extracted_fields={}
             )
             
-            assert isinstance(result, CRSTemplate)
-            assert result.project_title == "E-Commerce Platform"
-            assert len(result.functional_requirements) > 0
-            assert result.functional_requirements[0]['id'].startswith('BR-')  # BABOK uses BR- prefix
+        assert isinstance(result, CRSTemplate)
+        assert result.project_title == "E-Commerce Platform"
+        assert len(result.functional_requirements) > 0
+        assert result.functional_requirements[0]['id'].startswith('BR-')  # BABOK uses BR- prefix
     
-    @patch('app.ai.nodes.template_filler.llm_template_filler.ChatGroq')
-    def test_ieee830_pattern_extraction_flow(self, mock_groq):
+    @patch('app.ai.nodes.template_filler.llm_template_filler.get_template_filler_llm')
+    def test_ieee830_pattern_extraction_flow(self, mock_llm):
         """Test full extraction flow with IEEE 830 pattern."""
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'}):
-            # Mock LLM response
-            mock_response = Mock()
-            mock_response.content = json.dumps({
-                "project_title": "Inventory Management System",
-                "project_description": "Technical system for tracking inventory in real-time.",
-                "project_objectives": ["Automate inventory tracking", "Reduce manual errors"],
-                "target_users": ["Warehouse staff", "Managers"],
-                "functional_requirements": [
-                    {
-                        "id": "SRS-001",
-                        "title": "Real-time Inventory Tracking",
-                        "description": "System shall update inventory counts within 2 seconds of transaction.",
-                        "priority": "high"
-                    }
-                ],
-                "stakeholders": ["Warehouse managers"],
-                "performance_requirements": ["Response time < 2 seconds"],
-                "security_requirements": ["Role-based access control"],
-                "scalability_requirements": [],
-                "technology_stack": {},
-                "integrations": [],
-                "budget_constraints": "",
-                "timeline_constraints": "",
-                "technical_constraints": [],
-                "success_metrics": [],
-                "acceptance_criteria": [],
-                "assumptions": [],
-                "risks": [],
-                "out_of_scope": []
-            })
+        mock_llm.return_value = Mock()
+        # Mock LLM response
+        mock_response = Mock()
+        mock_response.content = json.dumps({
+            "project_title": "Inventory Management System",
+            "project_description": "Technical system for tracking inventory in real-time.",
+            "project_objectives": ["Automate inventory tracking", "Reduce manual errors"],
+            "target_users": ["Warehouse staff", "Managers"],
+            "functional_requirements": [
+                {
+                    "id": "SRS-001",
+                    "title": "Real-time Inventory Tracking",
+                    "description": "System shall update inventory counts within 2 seconds of transaction.",
+                    "priority": "high"
+                }
+            ],
+            "stakeholders": ["Warehouse managers"],
+            "performance_requirements": ["Response time < 2 seconds"],
+            "security_requirements": ["Role-based access control"],
+            "scalability_requirements": [],
+            "technology_stack": {},
+            "integrations": [],
+            "budget_constraints": "",
+            "timeline_constraints": "",
+            "technical_constraints": [],
+            "success_metrics": [],
+            "acceptance_criteria": [],
+            "assumptions": [],
+            "risks": [],
+            "out_of_scope": []
+        })
             
-            mock_groq_instance = MagicMock()
-            mock_groq_instance.invoke.return_value = mock_response
-            mock_groq.return_value = mock_groq_instance
+        mock_llm_instance = MagicMock()
+        mock_llm_instance.invoke.return_value = mock_response
+        mock_llm.return_value = mock_llm_instance
             
-            filler = LLMTemplateFiller(pattern='ieee_830')
-            result = filler.extract_requirements(
+        filler = LLMTemplateFiller(pattern='ieee_830')
+        result = filler.extract_requirements(
                 user_input="I need an inventory system",
                 conversation_history=[],
                 extracted_fields={}
             )
             
-            assert isinstance(result, CRSTemplate)
-            assert result.project_title == "Inventory Management System"
-            assert len(result.functional_requirements) > 0
-            assert result.functional_requirements[0]['id'].startswith('SRS-')  # IEEE 830 uses SRS- prefix
+        assert isinstance(result, CRSTemplate)
+        assert result.project_title == "Inventory Management System"
+        assert len(result.functional_requirements) > 0
+        assert result.functional_requirements[0]['id'].startswith('SRS-')  # IEEE 830 uses SRS- prefix
     
-    @patch('app.ai.nodes.template_filler.llm_template_filler.ChatGroq')
-    def test_iso29148_pattern_extraction_flow(self, mock_groq):
+    @patch('app.ai.nodes.template_filler.llm_template_filler.get_template_filler_llm')
+    def test_iso29148_pattern_extraction_flow(self, mock_llm):
         """Test full extraction flow with ISO 29148 pattern."""
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'}):
-            # Mock LLM response
-            mock_response = Mock()
-            mock_response.content = json.dumps({
-                "project_title": "Hospital Management System",
-                "project_description": "Comprehensive system for managing hospital operations and patient records.",
-                "project_objectives": ["Streamline patient care", "Improve record accuracy"],
-                "target_users": ["Doctors", "Nurses", "Administrators"],
-                "functional_requirements": [
-                    {
-                        "id": "SYS-001",
-                        "title": "Patient Registration",
-                        "description": "System shall allow registration of new patients with verification.",
-                        "priority": "high"
-                    }
-                ],
-                "stakeholders": ["Hospital staff", "Patients"],
-                "performance_requirements": [],
-                "security_requirements": ["HIPAA compliance"],
-                "scalability_requirements": [],
-                "technology_stack": {},
-                "integrations": [],
-                "budget_constraints": "",
-                "timeline_constraints": "",
-                "technical_constraints": ["Must comply with HIPAA"],
-                "success_metrics": [],
-                "acceptance_criteria": [],
-                "assumptions": [],
-                "risks": [],
-                "out_of_scope": []
-            })
+        mock_llm.return_value = Mock()
+        # Mock LLM response
+        mock_response = Mock()
+        mock_response.content = json.dumps({
+            "project_title": "Hospital Management System",
+            "project_description": "Comprehensive system for managing hospital operations and patient records.",
+            "project_objectives": ["Streamline patient care", "Improve record accuracy"],
+            "target_users": ["Doctors", "Nurses", "Administrators"],
+            "functional_requirements": [
+                {
+                    "id": "SYS-001",
+                    "title": "Patient Registration",
+                    "description": "System shall allow registration of new patients with verification.",
+                    "priority": "high"
+                }
+            ],
+            "stakeholders": ["Hospital staff", "Patients"],
+            "performance_requirements": [],
+            "security_requirements": ["HIPAA compliance"],
+            "scalability_requirements": [],
+            "technology_stack": {},
+            "integrations": [],
+            "budget_constraints": "",
+            "timeline_constraints": "",
+            "technical_constraints": ["Must comply with HIPAA"],
+            "success_metrics": [],
+            "acceptance_criteria": [],
+            "assumptions": [],
+            "risks": [],
+            "out_of_scope": []
+        })
             
-            mock_groq_instance = MagicMock()
-            mock_groq_instance.invoke.return_value = mock_response
-            mock_groq.return_value = mock_groq_instance
+        mock_llm_instance = MagicMock()
+        mock_llm_instance.invoke.return_value = mock_response
+        mock_llm.return_value = mock_llm_instance
             
-            filler = LLMTemplateFiller(pattern='iso_iec_ieee_29148')
-            result = filler.extract_requirements(
+        filler = LLMTemplateFiller(pattern='iso_iec_ieee_29148')
+        result = filler.extract_requirements(
                 user_input="I need a hospital management system",
                 conversation_history=[],
                 extracted_fields={}
             )
             
-            assert isinstance(result, CRSTemplate)
-            assert result.project_title == "Hospital Management System"
-            assert len(result.functional_requirements) > 0
-            assert result.functional_requirements[0]['id'].startswith('SYS-')  # ISO 29148 uses SYS- prefix
+        assert isinstance(result, CRSTemplate)
+        assert result.project_title == "Hospital Management System"
+        assert len(result.functional_requirements) > 0
+        assert result.functional_requirements[0]['id'].startswith('SYS-')  # ISO 29148 uses SYS- prefix
 
 
 class TestCRSTemplateStructure:
@@ -280,9 +280,9 @@ class TestCRSTemplateStructure:
     def test_crs_template_to_dict(self):
         """Test CRSTemplate can be converted to dictionary."""
         template = CRSTemplate(
-            project_title="Test Project",
-            project_description="Test Description",
-            project_objectives=["Objective 1", "Objective 2"]
+        project_title="Test Project",
+        project_description="Test Description",
+        project_objectives=["Objective 1", "Objective 2"]
         )
         
         result = template.to_dict()
@@ -295,8 +295,8 @@ class TestCRSTemplateStructure:
     def test_crs_template_to_json(self):
         """Test CRSTemplate can be converted to JSON string."""
         template = CRSTemplate(
-            project_title="Test Project",
-            functional_requirements=[
+        project_title="Test Project",
+        functional_requirements=[
                 {"id": "FR-001", "title": "Feature 1", "description": "Description", "priority": "high"}
             ]
         )
@@ -311,12 +311,12 @@ class TestCRSTemplateStructure:
     def test_crs_template_get_summary_points(self):
         """Test CRSTemplate summary points generation."""
         template = CRSTemplate(
-            project_title="E-Commerce Platform",
-            project_objectives=["Objective 1", "Objective 2"],
-            functional_requirements=[{"id": "FR-001"}],
-            target_users=["Customers", "Admins"],
-            budget_constraints="$50,000",
-            timeline_constraints="6 months"
+        project_title="E-Commerce Platform",
+        project_objectives=["Objective 1", "Objective 2"],
+        functional_requirements=[{"id": "FR-001"}],
+        target_users=["Customers", "Admins"],
+        budget_constraints="$50,000",
+        timeline_constraints="6 months"
         )
         
         points = template.get_summary_points()
@@ -358,47 +358,47 @@ class TestPatternValidation:
             # Should have created with babok pattern
             assert mock_db.add.called
     
-    @patch('app.ai.nodes.template_filler.llm_template_filler.ChatGroq')
-    def test_pattern_case_insensitivity(self, mock_groq):
+    @patch('app.ai.nodes.template_filler.llm_template_filler.get_template_filler_llm')
+    def test_pattern_case_insensitivity(self, mock_llm):
         """Test that pattern selection is case-insensitive where appropriate."""
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'}):
-            # These should all work
-            filler1 = LLMTemplateFiller(pattern='babok')
-            filler2 = LLMTemplateFiller(pattern='BABOK')
-            filler3 = LLMTemplateFiller(pattern='ieee_830')
-            
-            assert filler1.pattern.lower() == 'babok'
-            assert filler2.pattern.lower() == 'babok'
-            assert filler3.pattern == 'ieee_830'
+        mock_llm.return_value = Mock()
+        # These should all work
+        filler1 = LLMTemplateFiller(pattern='babok')
+        filler2 = LLMTemplateFiller(pattern='BABOK')
+        filler3 = LLMTemplateFiller(pattern='ieee_830')
+        
+        assert filler1.pattern.lower() == 'babok'
+        assert filler2.pattern.lower() == 'babok'
+        assert filler3.pattern == 'ieee_830'
 
 
 class TestPromptQuality:
     """Test the quality and completeness of pattern-specific prompts."""
     
-    @patch('app.ai.nodes.template_filler.llm_template_filler.ChatGroq')
-    def test_all_prompts_have_json_output_instruction(self, mock_groq):
+    @patch('app.ai.nodes.template_filler.llm_template_filler.get_template_filler_llm')
+    def test_all_prompts_have_json_output_instruction(self, mock_llm):
         """Verify all prompts instruct LLM to return JSON."""
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'}):
-            filler = LLMTemplateFiller()
+        mock_llm.return_value = Mock()
+        filler = LLMTemplateFiller()
             
-            prompts = [
+        prompts = [
                 filler.BABOK_EXTRACTION_PROMPT,
                 filler.IEEE830_EXTRACTION_PROMPT,
                 filler.ISO29148_EXTRACTION_PROMPT
             ]
             
-            for prompt in prompts:
+        for prompt in prompts:
                 assert 'JSON' in prompt
                 assert 'json' in prompt.lower()
                 assert 'Return' in prompt or 'return' in prompt
     
-    @patch('app.ai.nodes.template_filler.llm_template_filler.ChatGroq')
-    def test_all_prompts_have_required_fields(self, mock_groq):
+    @patch('app.ai.nodes.template_filler.llm_template_filler.get_template_filler_llm')
+    def test_all_prompts_have_required_fields(self, mock_llm):
         """Verify all prompts include all required CRS fields."""
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'}):
-            filler = LLMTemplateFiller()
+        mock_llm.return_value = Mock()
+        filler = LLMTemplateFiller()
             
-            required_fields = [
+        required_fields = [
                 'project_title',
                 'project_description',
                 'functional_requirements',
@@ -407,30 +407,30 @@ class TestPromptQuality:
                 'timeline_constraints'
             ]
             
-            prompts = [
+        prompts = [
                 filler.BABOK_EXTRACTION_PROMPT,
                 filler.IEEE830_EXTRACTION_PROMPT,
                 filler.ISO29148_EXTRACTION_PROMPT
             ]
             
-            for prompt in prompts:
+        for prompt in prompts:
                 for field in required_fields:
                     assert field in prompt, f"Field '{field}' missing from prompt"
     
-    @patch('app.ai.nodes.template_filler.llm_template_filler.ChatGroq')
-    def test_prompts_include_quality_instructions(self, mock_groq):
+    @patch('app.ai.nodes.template_filler.llm_template_filler.get_template_filler_llm')
+    def test_prompts_include_quality_instructions(self, mock_llm):
         """Verify prompts include quality and specificity instructions."""
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'test_key'}):
-            filler = LLMTemplateFiller()
+        mock_llm.return_value = Mock()
+        filler = LLMTemplateFiller()
             
-            prompts = [
+        prompts = [
                 filler.BABOK_EXTRACTION_PROMPT,
                 filler.IEEE830_EXTRACTION_PROMPT,
                 filler.ISO29148_EXTRACTION_PROMPT
             ]
             
-            quality_keywords = ['DO NOT', 'CRITICAL', 'specific', 'clear', 'concise']
+        quality_keywords = ['DO NOT', 'CRITICAL', 'specific', 'clear', 'concise']
             
-            for prompt in prompts:
+        for prompt in prompts:
                 has_quality_instruction = any(keyword in prompt for keyword in quality_keywords)
                 assert has_quality_instruction, "Prompt lacks quality instructions"

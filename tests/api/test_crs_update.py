@@ -6,7 +6,7 @@ from fastapi import status
 from app.models.crs import CRSDocument, CRSStatus
 from app.api.crs import CRSContentUpdate
 
-def test_update_crs_content(client, db, client_auth_headers, client_user):
+def test_update_crs_content(client, db, client_token, client_user):
     # 1. Setup: Create team, project, and CRS
     from app.models.team import Team, TeamMember
     from app.models.project import Project, ProjectStatus
@@ -50,13 +50,14 @@ def test_update_crs_content(client, db, client_auth_headers, client_user):
     # 2. Update content successfully
     new_content = '{"project_title": "Updated Project", "description": "New description"}'
     
+    headers = {"Authorization": f"Bearer {client_token}"}
     response = client.put(
         f"/api/crs/{crs.id}/content",
         json={
             "content": new_content,
             "expected_version": 1
         },
-        headers=client_auth_headers
+        headers=headers
     )
     
     assert response.status_code == status.HTTP_200_OK
@@ -69,7 +70,7 @@ def test_update_crs_content(client, db, client_auth_headers, client_user):
     assert crs.content == new_content
     assert crs.edit_version == 2
 
-def test_update_crs_content_conflict(client, db, client_auth_headers, client_user):
+def test_update_crs_content_conflict(client, db, client_token, client_user):
     # 1. Setup
     from app.models.team import Team, TeamMember
     from app.models.project import Project, ProjectStatus
@@ -104,19 +105,20 @@ def test_update_crs_content_conflict(client, db, client_auth_headers, client_use
     db.commit()
 
     # 2. Try to update with WRONG version
+    headers = {"Authorization": f"Bearer {client_token}"}
     response = client.put(
         f"/api/crs/{crs.id}/content",
         json={
             "content": '{}',
             "expected_version": 1 # Expecting 1, actual is 5
         },
-        headers=client_auth_headers
+        headers=headers
     )
     
     assert response.status_code == status.HTTP_409_CONFLICT
     assert "modified by another user" in response.json()["detail"]
 
-def test_update_crs_approved_fails(client, db, client_auth_headers, client_user):
+def test_update_crs_approved_fails(client, db, client_token, client_user):
     # 1. Setup
     from app.models.team import Team, TeamMember
     from app.models.project import Project, ProjectStatus
@@ -151,13 +153,14 @@ def test_update_crs_approved_fails(client, db, client_auth_headers, client_user)
     db.commit()
 
     # 2. Try to update an approved CRS
+    headers = {"Authorization": f"Bearer {client_token}"}
     response = client.put(
         f"/api/crs/{crs.id}/content",
         json={
             "content": '{}',
             "expected_version": 1
         },
-        headers=client_auth_headers
+        headers=headers
     )
     
     assert response.status_code == status.HTTP_400_BAD_REQUEST

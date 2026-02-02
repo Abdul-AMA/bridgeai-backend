@@ -136,7 +136,7 @@ def ba_auth_headers(client: TestClient, test_ba_user: User) -> Dict[str, str]:
     Get authentication headers for BA user.
     """
     response = client.post(
-        "/auth/token",
+        "/api/auth/token",
         data={"username": test_ba_user.email, "password": "TestPassword123!"},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
@@ -151,7 +151,7 @@ def client_auth_headers(client: TestClient, test_client_user: User) -> Dict[str,
     Get authentication headers for Client user.
     """
     response = client.post(
-        "/auth/token",
+        "/api/auth/token",
         data={"username": test_client_user.email, "password": "TestPassword123!"},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
@@ -168,7 +168,7 @@ def another_client_auth_headers(
     Get authentication headers for another Client user.
     """
     response = client.post(
-        "/auth/token",
+        "/api/auth/token",
         data={
             "username": test_another_client_user.email,
             "password": "TestPassword123!",
@@ -223,7 +223,7 @@ def client_user(db: Session) -> User:
 def ba_token(client: TestClient, ba_user: User) -> str:
     """Get authentication token for BA user."""
     response = client.post(
-        "/auth/token",
+        "/api/auth/token",
         data={"username": ba_user.email, "password": "TestPassword123!"},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
@@ -235,7 +235,7 @@ def ba_token(client: TestClient, ba_user: User) -> str:
 def client_token(client: TestClient, client_user: User) -> str:
     """Get authentication token for client user."""
     response = client.post(
-        "/auth/token",
+        "/api/auth/token",
         data={"username": client_user.email, "password": "TestPassword123!"},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
@@ -298,6 +298,40 @@ def sample_crs(db: Session, sample_project, client_user: User):
     return crs
 
 
+@pytest.fixture
+def setup_team_project(db: Session, client_user: User, ba_user: User):
+    """Create a team and project setup for CRS testing."""
+    from app.models.team import Team, TeamMember
+    from app.models.project import Project, ProjectStatus
+
+    # Create team
+    team = Team(name="Test Team for CRS", created_by=client_user.id)
+    db.add(team)
+    db.commit()
+    db.refresh(team)
+
+    # Add both users as team members
+    client_member = TeamMember(team_id=team.id, user_id=client_user.id, role="member")
+    ba_member = TeamMember(team_id=team.id, user_id=ba_user.id, role="member")
+    db.add(client_member)
+    db.add(ba_member)
+    db.commit()
+
+    # Create project
+    project = Project(
+        name="Test Project for CRS",
+        description="Test project for CRS operations",
+        team_id=team.id,
+        created_by=client_user.id,
+        status=ProjectStatus.active.value,
+    )
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+
+    return {"team": team, "project": project}
+
+
 @pytest.fixture(scope="function")
 def rate_limit_client(db: Session) -> Generator[TestClient, None, None]:
     """
@@ -324,7 +358,7 @@ def rate_limit_ba_auth_headers(
 ) -> Dict[str, str]:
     """Get authentication headers for BA user with rate limiting enabled."""
     response = rate_limit_client.post(
-        "/auth/token",
+        "/api/auth/token",
         data={"username": test_ba_user.email, "password": "TestPassword123!"},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
@@ -339,7 +373,7 @@ def rate_limit_client_auth_headers(
 ) -> Dict[str, str]:
     """Get authentication headers for Client user with rate limiting enabled."""
     response = rate_limit_client.post(
-        "/auth/token",
+        "/api/auth/token",
         data={"username": test_client_user.email, "password": "TestPassword123!"},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )

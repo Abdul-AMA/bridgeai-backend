@@ -235,6 +235,11 @@ def store_embeddings_batch(
         store_embeddings_batch(ids, texts, metas)
     """
     try:
+        # Handle empty batch gracefully
+        if not embedding_ids or len(embedding_ids) == 0:
+            logger.info("Empty batch provided, skipping")
+            return []
+
         collection = get_collection()
 
         logger.info(f"Batch storing {len(embedding_ids)} embeddings")

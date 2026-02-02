@@ -72,10 +72,11 @@ class TestSuggestionsNode:
 class TestSuggestionsGenerator:
     """Test the LLM suggestions generator"""
 
-    @patch("app.ai.nodes.suggestions.llm_suggestions_generator.client")
-    def test_generate_creative_suggestions(self, mock_client):
+    @patch("app.ai.nodes.suggestions.llm_suggestions_generator.get_suggestions_llm")
+    def test_generate_creative_suggestions(self, mock_llm_factory):
         """Test creative suggestions generation"""
-        # Mock OpenAI response
+        # Mock LLM response
+        mock_llm = Mock()
         mock_message = Mock()
         mock_message.content = """
         [
@@ -89,11 +90,8 @@ class TestSuggestionsGenerator:
           }
         ]
         """
-        mock_choice = Mock()
-        mock_choice.message = mock_message
-        mock_response = Mock()
-        mock_response.choices = [mock_choice]
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_llm.invoke.return_value = mock_message
+        mock_llm_factory.return_value = mock_llm
 
         project_context = {
             "project_id": 1,
