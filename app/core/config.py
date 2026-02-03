@@ -58,4 +58,8 @@ class Settings(BaseSettings):
     chroma_db_path: str = Field(default="./chroma_db")
     embedding_model: str = Field(default="openai")
 
+    GROQ_API_KEY: str
+    google_client_id: str
+    google_client_secret: str
+
 settings = Settings()

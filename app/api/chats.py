@@ -519,8 +519,9 @@ async def websocket_endpoint(
                                     Message.sender_type == SenderType.client
                                 ).count()
                                 
-                                # Only start if idle and have enough context
-                                if current_status == CRSGenerationStatus.IDLE and message_count >= 3:
+                                # Only start if IDLE/COMPLETE/ERROR and have at least one message
+                                # This ensures the document is filled gradually as the chat progresses.
+                                if current_status in [CRSGenerationStatus.IDLE, CRSGenerationStatus.COMPLETE, CRSGenerationStatus.ERROR] and message_count >= 1:
                                     # Queue background generation
                                     queued = await generator.queue_generation(
                                         session_id=chat_id,

@@ -75,6 +75,7 @@ class BackgroundCRSGenerator:
         self.active_tasks: Dict[int, asyncio.Task] = {}  # session_id -> task
         self.task_queue: asyncio.Queue = asyncio.Queue()
         self.processing_sessions: Set[int] = set()
+        self.queued_sessions: Set[int] = set()  # Track sessions in queue
         self.session_status: Dict[int, CRSGenerationStatus] = {}
         
         logger.info("BackgroundCRSGenerator initialized")
@@ -93,6 +94,7 @@ class BackgroundCRSGenerator:
                     continue
                 
                 # Mark session as processing
+                self.queued_sessions.discard(task.session_id)
                 self.processing_sessions.add(task.session_id)
                 self.session_status[task.session_id] = CRSGenerationStatus.GENERATING
                 
@@ -237,12 +239,13 @@ class BackgroundCRSGenerator:
         
         template_filler = LLMTemplateFiller(pattern=task.pattern)
         
-        # Step 3: Extract requirements (with progressive callback)
+        # Step 3: Extract requirements (STREAMING)
         await event_bus.publish(session_id, {
             "type": "crs_progress",
             "step": "extraction",
             "percentage": 30,
-            "message": "Extracting requirements from conversation..."
+            "message": "AI is writing the specification...",
+            "is_streaming": True
         })
         
         # Combine all user inputs
@@ -250,28 +253,46 @@ class BackgroundCRSGenerator:
         
         # Get existing CRS if any
         session_model = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-        existing_crs = None
+        existing_crs_content = None
         if session_model and session_model.crs_document_id:
             existing_crs = db.query(CRSDocument).filter(CRSDocument.id == session_model.crs_document_id).first()
+            if existing_crs:
+                existing_crs_content = existing_crs.content
         
-        # Fill template (this is the core LLM operation)
+        # Stream fill template
+        last_emit_time = 0
+        final_result = {}
+        
+        async for partial_json in template_filler.fill_template_stream(
+            user_input=combined_input,
+            conversation_history=conversation_history,
+            extracted_fields=existing_crs_content
+        ):
+            final_result = partial_json
+            current_time = asyncio.get_event_loop().time()
+            
+            # Throttle emissions to ~10Hz (every 100ms) to avoid overwhelming UI
+            if current_time - last_emit_time > 0.1:
+                await event_bus.publish(session_id, {
+                    "type": "crs_partial",
+                    "content": json.dumps(partial_json),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                last_emit_time = current_time
+
+        # Final full extraction to get completeness metadata and quality checks
+        # (Using the batch method once at the end for full validation)
         result = template_filler.fill_template(
             user_input=combined_input,
             conversation_history=conversation_history,
-            extracted_fields=existing_crs.content if existing_crs else None
+            extracted_fields=existing_crs_content
         )
         
-        # Step 4: Emit template update
+        # Step 4: Emit template final update
         crs_template_dict = result["crs_template"].to_dict() if hasattr(result["crs_template"], "to_dict") else result["crs_template"]
         
-        await event_bus.publish(session_id, {
-            "type": "crs_progress",
-            "step": "template_filled",
-            "percentage": 60,
-            "message": "Requirements extracted successfully",
-            "crs_template": json.dumps(crs_template_dict),
-            "completeness_percentage": result.get("completeness_info", {}).get("percentage", 0)
-        })
+        if result.get("is_auto_filled"):
+            logger.info(f"CRS for session {session_id} is being AUTO-FILLED (threshold reached)")
         
         # Step 5: Generate summary
         await event_bus.publish(session_id, {
@@ -358,8 +379,8 @@ class BackgroundCRSGenerator:
             True if task was queued, False if already processing
         """
         # Check if already processing or queued
-        if session_id in self.processing_sessions:
-            logger.debug(f"Session {session_id} already has active CRS generation")
+        if session_id in self.processing_sessions or session_id in self.queued_sessions:
+            logger.debug(f"Session {session_id} already has active or queued CRS generation")
             return False
         
         # Create task
@@ -373,6 +394,7 @@ class BackgroundCRSGenerator:
         
         # Add to queue
         await self.task_queue.put(task)
+        self.queued_sessions.add(session_id)
         self.session_status[session_id] = CRSGenerationStatus.QUEUED
         
         logger.info(f"Queued CRS generation for session {session_id} (pattern={pattern})")
