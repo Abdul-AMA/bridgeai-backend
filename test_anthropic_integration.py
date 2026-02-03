@@ -1,6 +1,6 @@
 """
-Test script to verify Groq API integration
-Run this to ensure the migration from Claude to Groq was successful
+Test script to verify Anthropic API integration
+Run this to ensure the migration from Groq to Anthropic was successful
 """
 import sys
 import os
@@ -18,11 +18,11 @@ def test_configuration():
     print("Testing Configuration...")
     print("=" * 60)
 
-    api_key = settings.GROQ_API_KEY
+    api_key = settings.ANTHROPIC_API_KEY
     if api_key:
         print(f"✓ API Key loaded: {api_key[:10]}...{api_key[-5:]}")
     else:
-        print("✗ Groq API Key not found in settings!")
+        print("✗ Anthropic API Key not found in settings!")
         
     print(f"✓ Default Model: {settings.LLM_DEFAULT_MODEL}")
     print(f"✓ Clarification Model: {settings.LLM_CLARIFICATION_MODEL}")
@@ -70,9 +70,9 @@ def test_factory_creation():
 
 
 def test_api_call():
-    """Test actual API call to Groq"""
+    """Test actual API call to Anthropic"""
     print("\n" + "=" * 60)
-    print("Testing Groq API Call...")
+    print("Testing Anthropic API Call...")
     print("=" * 60)
 
     try:
@@ -80,30 +80,29 @@ def test_api_call():
 
         # Simple test message
         messages = [
-            {"role": "user", "content": "Say 'Hello from Groq!' if you can read this."}
+            {"role": "user", "content": "Say 'Hello from Anthropic!' if you can read this."}
         ]
 
-        print("Sending test message to Groq API...")
+        print("Sending test message to Anthropic API...")
         response = llm.invoke(messages)
 
         print(f"\n✓ API call successful!")
         print(f"✓ Response: {response.content}")
-        # Metadata might be different for Groq
-        print(f"✓ Model used: {response.response_metadata.get('model_name', 'N/A')}")
+        print(f"✓ Model used: {response.response_metadata.get('model', 'N/A')}")
         
         return True
 
     except Exception as e:
         print(f"\n✗ API call failed: {e}")
         print("\nTroubleshooting:")
-        print("1. Check that GROQ_API_KEY is set correctly in .env")
-        print("2. Verify your API key is valid at https://console.groq.com/")
-        print("3. Ensure you have the langchain-groq package installed")
+        print("1. Check that ANTHROPIC_API_KEY is set correctly in .env")
+        print("2. Verify your API key is valid at https://console.anthropic.com/")
+        print("3. Ensure you have the langchain-anthropic package installed")
         return False
 
 
 def test_json_parsing():
-    """Test Groq's ability to generate structured JSON"""
+    """Test Anthropic's ability to generate structured JSON"""
     print("\n" + "=" * 60)
     print("Testing JSON Generation (Template Filler Capability)...")
     print("=" * 60)
@@ -128,7 +127,6 @@ Only respond with valid JSON, nothing else."""}
         import json
         import re
         
-        # Groq sometimes adds backticks
         content = response.content
         if "```json" in content:
             content = re.search(r"```json\n(.*?)\n```", content, re.DOTALL).group(1)
@@ -153,7 +151,7 @@ Only respond with valid JSON, nothing else."""}
 def main():
     """Run all tests"""
     print("\n" + "=" * 60)
-    print("GROQ API INTEGRATION TEST")
+    print("ANTHROPIC API INTEGRATION TEST")
     print("=" * 60)
     print()
 
@@ -185,12 +183,12 @@ def main():
 
     print("\n" + "=" * 60)
     if all_passed:
-        print("✓ ALL TESTS PASSED - Groq integration is working!")
+        print("✓ ALL TESTS PASSED - Anthropic integration is working!")
         print("=" * 60)
         print("\nYou can now:")
         print("1. Start the backend: uvicorn app.main:app --reload")
         print("2. Test the full API endpoint: POST /api/analyze-requirements")
-        print("3. Monitor usage at: https://console.groq.com/")
+        print("3. Monitor usage at: https://console.anthropic.com/")
     else:
         print("✗ SOME TESTS FAILED - Please check the errors above")
         print("=" * 60)

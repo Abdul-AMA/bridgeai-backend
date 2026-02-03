@@ -50,7 +50,7 @@ The system uses a LangGraph-based multi-agent workflow to:
 │  │    - extracted_fields: Previously extracted data                      │  │
 │  │                                                                        │  │
 │  │  Process:                                                              │  │
-│  │    1. Calls Groq LLM (llama-3.3-70b-versatile)                        │  │
+│  │    1. Calls Anthropic LLM (claude-3-5-sonnet-20240620)                        │  │
 │  │    2. Extracts: project_title, description, requirements, etc.        │  │
 │  │    3. Generates summary_points                                        │  │
 │  │    4. Checks completeness (title + desc + requirements + 2 optional)  │  │
@@ -134,7 +134,7 @@ After CRS is generated via chat, these endpoints manage it:
 | `app/ai/state.py` | Shared state between nodes |
 | `app/ai/nodes/clarification/` | Clarification agent |
 | `app/ai/nodes/template_filler/` | CRS generation agent |
-| `app/ai/nodes/template_filler/llm_template_filler.py` | Groq LLM integration |
+| `app/ai/nodes/template_filler/llm_template_filler.py` | Anthropic LLM integration |
 | `app/services/crs_service.py` | CRS persistence and retrieval |
 | `app/api/crs.py` | REST API endpoints |
 | `app/api/chats.py` | WebSocket with CRS metadata |
@@ -158,5 +158,5 @@ A CRS is considered complete when:
 
 ## Environment Requirements
 
-- `GROQ_API_KEY`: Required for LLM-powered CRS generation
+- `ANTHROPIC_API_KEY`: Required for LLM-powered CRS generation
 - ChromaDB: For semantic memory storage

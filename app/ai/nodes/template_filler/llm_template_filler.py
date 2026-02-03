@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Union, AsyncGenerator
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_groq import ChatGroq
+from langchain_anthropic import ChatAnthropic
 
 from app.ai.llm_factory import get_template_filler_llm
 from app.core.config import settings
@@ -96,7 +96,7 @@ class CRSTemplate:
 
 class LLMTemplateFiller:
     """
-    LLM-powered CRS template filler using Groq LLM.
+    LLM-powered CRS template filler using Anthropic LLM.
     Extracts and maps requirements from conversation to structured CRS format.
     Supports multiple CRS patterns: BABOK, IEEE 830, ISO/IEC/IEEE 29148.
     """
@@ -534,7 +534,7 @@ Return pure JSON now:
         pattern: str = "babok",
     ):
         """
-        Initialize the template filler with Groq LLM.
+        Initialize the template filler with Anthropic LLM.
         
         Model configuration is now centralized in app.core.config.
         To change the model, update the LLM_TEMPLATE_FILLER_MODEL setting in your .env file.
@@ -586,7 +586,7 @@ Return pure JSON now:
             )
 
     async def _call_llm_stream(self, messages) -> AsyncGenerator[Dict, None]:
-        """Call Groq LLM with streaming and parse partial JSON."""
+        """Call Anthropic LLM with streaming and parse partial JSON."""
         parser = JsonOutputParser()
         try:
             chain = self.llm | parser
@@ -598,7 +598,7 @@ Return pure JSON now:
             raise
 
     def _call_llm(self, messages) -> str:
-        """Call Groq LLM and return the response content."""
+        """Call Anthropic LLM and return the response content."""
         try:
             response = self.llm.invoke(messages)
             return response.content
