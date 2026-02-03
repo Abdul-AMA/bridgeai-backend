@@ -261,7 +261,10 @@ class BackgroundCRSGenerator:
         
         # Stream fill template
         last_emit_time = 0
+        last_autosave_time = 0
         final_result = {}
+        autosave_interval = 10.0  # Auto-save draft every 10 seconds
+        draft_crs_id = None
         
         async for partial_json in template_filler.fill_template_stream(
             user_input=combined_input,
@@ -279,6 +282,56 @@ class BackgroundCRSGenerator:
                     "timestamp": datetime.utcnow().isoformat()
                 })
                 last_emit_time = current_time
+            
+            # Auto-save draft to database every 10 seconds
+            if current_time - last_autosave_time > autosave_interval:
+                try:
+                    crs_content_str = json.dumps(partial_json) if isinstance(partial_json, dict) else partial_json
+                    
+                    # Update existing draft or create new one
+                    if draft_crs_id:
+                        # Update existing draft
+                        draft_crs = db.query(CRSDocument).filter(CRSDocument.id == draft_crs_id).first()
+                        if draft_crs:
+                            draft_crs.content = crs_content_str
+                            draft_crs.updated_at = datetime.utcnow()
+                            db.commit()
+                            logger.info(f"Auto-saved draft CRS {draft_crs_id} for session {session_id}")
+                    else:
+                        # Create new draft
+                        draft_crs = persist_crs_document(
+                            db,
+                            project_id=task.project_id,
+                            created_by=task.user_id,
+                            content=crs_content_str,
+                            summary_points=[],  # Will be filled at completion
+                            pattern=task.pattern,
+                            field_sources=None,
+                            store_embedding=False  # Skip embedding for drafts
+                        )
+                        draft_crs_id = draft_crs.id
+                        
+                        # Link to session immediately so refresh can find it
+                        session_model.crs_document_id = draft_crs_id
+                        db.commit()
+                        
+                        logger.info(f"Created auto-save draft CRS {draft_crs_id} for session {session_id}")
+                        
+                        # Notify frontend that draft is now persisted
+                        await event_bus.publish(session_id, {
+                            "type": "crs_progress",
+                            "step": "draft_persisted",
+                            "percentage": 35,
+                            "message": "Draft saved to database",
+                            "crs_document_id": draft_crs_id
+                        })
+                    
+                    last_autosave_time = current_time
+                    
+                except Exception as e:
+                    logger.error(f"Auto-save failed for session {session_id}: {e}")
+                    # Don't fail the entire generation on auto-save errors
+                    db.rollback()
 
         # Final full extraction to get completeness metadata and quality checks
         # (Using the batch method once at the end for full validation)
@@ -316,33 +369,57 @@ class BackgroundCRSGenerator:
             "completeness_info": result.get("completeness_info", {})
         })
         
-        # Step 7: Persist to database (always, even if incomplete)
+        # Step 7: Persist to database (update existing draft or create new)
         await event_bus.publish(session_id, {
             "type": "crs_progress",
             "step": "persisting",
             "percentage": 90,
-            "message": "Saving CRS document..."
+            "message": "Finalizing CRS document..."
         })
         
         crs_content_dict = result["crs_template"].to_dict() if hasattr(result["crs_template"], "to_dict") else result["crs_template"]
         crs_content_str = json.dumps(crs_content_dict) if isinstance(crs_content_dict, dict) else crs_content_dict
         
-        crs_doc = persist_crs_document(
-            db,
-            project_id=task.project_id,
-            created_by=task.user_id,
-            content=crs_content_str,
-            summary_points=result.get("summary_points", []),
-            pattern=task.pattern,
-            field_sources=result.get("field_sources"),
-            store_embedding=True
-        )
+        # Update existing draft with final content and metadata
+        if draft_crs_id:
+            crs_doc = db.query(CRSDocument).filter(CRSDocument.id == draft_crs_id).first()
+            if crs_doc:
+                crs_doc.content = crs_content_str
+                crs_doc.summary_points = json.dumps(result.get("summary_points", []))
+                crs_doc.updated_at = datetime.utcnow()
+                
+                # Update embedding for final version using create_memory
+                try:
+                    from app.ai.memory_service import create_memory
+                    create_memory(
+                        db=db,
+                        project_id=task.project_id,
+                        text=crs_content_str,
+                        source_type="crs",
+                        source_id=crs_doc.id,
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to store embedding for CRS {crs_doc.id}: {e}")
+                
+                db.commit()
+                logger.info(f"Updated existing draft CRS {crs_doc.id} with final content for session {session_id}")
+        else:
+            # Fallback: create new document if no draft exists
+            crs_doc = persist_crs_document(
+                db,
+                project_id=task.project_id,
+                created_by=task.user_id,
+                content=crs_content_str,
+                summary_points=result.get("summary_points", []),
+                pattern=task.pattern,
+                field_sources=result.get("field_sources"),
+                store_embedding=True
+            )
+            # Link to session
+            session_model.crs_document_id = crs_doc.id
+            db.commit()
         
-        # Link to session
-        session_model.crs_document_id = crs_doc.id
-        db.commit()
-        
-        logger.info(f"CRS document {crs_doc.id} persisted for session {session_id} (complete={is_complete})")
+        logger.info(f"CRS document {crs_doc.id} finalized for session {session_id} (complete={is_complete})")
         
         # Step 8: Publish completion
         self.session_status[session_id] = CRSGenerationStatus.COMPLETE

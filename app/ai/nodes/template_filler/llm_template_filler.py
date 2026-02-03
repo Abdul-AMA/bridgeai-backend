@@ -6,7 +6,7 @@ Maps clarified requirements to a structured CRS template.
 import json
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional, Union, AsyncGenerator
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -942,6 +942,9 @@ Return pure JSON now:
         # NOTE: Stripping logic removed to allow truly gradual generation
         # Every piece of extracted information is now immediately visible.
         summary = self.generate_summary(template)
+        
+        # Check if auto-fill was triggered
+        is_above_threshold = actual_allow_inference
 
         return {
             "crs_template": template.to_dict(),
