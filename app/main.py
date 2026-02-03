@@ -14,6 +14,7 @@ logging.basicConfig(
 from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware  # noqa: E402
@@ -102,6 +103,14 @@ app.add_middleware(
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 
 app.include_router(api_router, prefix="/api")
+
+# Mount static files for avatars
+import os
+# Ensure public directory exists
+os.makedirs("public/avatars", exist_ok=True)
+
+# Mount static files with HTML=True to serve files properly
+app.mount("/public", StaticFiles(directory="public"), name="public")
 
 
 @app.get("/")
