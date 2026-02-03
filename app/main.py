@@ -106,8 +106,11 @@ app.include_router(api_router, prefix="/api")
 
 # Mount static files for avatars
 import os
-if os.path.exists("public"):
-    app.mount("/public", StaticFiles(directory="public"), name="public")
+# Ensure public directory exists
+os.makedirs("public/avatars", exist_ok=True)
+
+# Mount static files with HTML=True to serve files properly
+app.mount("/public", StaticFiles(directory="public"), name="public")
 
 
 @app.get("/")
