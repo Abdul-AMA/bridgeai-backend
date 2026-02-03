@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import Dict, List
 
@@ -399,20 +400,36 @@ async def websocket_endpoint(
                     )
                     continue
 
-                # Save message to database
-                new_message = Message(
-                    session_id=chat_id,
-                    sender_type=sender_type,
-                    sender_id=user.id,
-                    content=content,
-                )
+                # Save message to database with retry on lock errors
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        new_message = Message(
+                            session_id=chat_id,
+                            sender_type=sender_type,
+                            sender_id=user.id,
+                            content=content,
+                        )
 
-                db.add(new_message)
-                db.commit()
-                db.refresh(new_message)
+                        db.add(new_message)
+                        db.commit()
+                        db.refresh(new_message)
+                        break  # Success
+                    except Exception as e:
+                        db.rollback()
+                        if attempt < max_retries - 1:
+                            print(f"[WebSocket] Database error (attempt {attempt + 1}/{max_retries}): {e}")
+                            await asyncio.sleep(0.1 * (attempt + 1))  # Exponential backoff
+                        else:
+                            print(f"[WebSocket] Failed to save message after {max_retries} attempts: {e}")
+                            await websocket.send_text(
+                                json.dumps({"error": "Failed to save message. Please try again."})
+                            )
+                            continue
 
                 # Broadcast message to all connected clients in this session
                 message_response = {
+                    "type": "message",
                     "id": new_message.id,
                     "session_id": new_message.session_id,
                     "sender_type": new_message.sender_type.value,
@@ -430,6 +447,13 @@ async def websocket_endpoint(
                 if sender_type == SenderType.client:
                     try:
                         print(f"[WebSocket] Invoking AI for message: {content}")
+
+                        # Send thinking status
+                        await manager.broadcast_to_session({
+                            "type": "status",
+                            "status": "thinking",
+                            "is_generating": True
+                        }, chat_id)
 
                         # Fetch conversation history (get last 20 messages)
                         history_messages = (
@@ -479,8 +503,64 @@ async def websocket_endpoint(
                         # Invoke graph (using ainvoke if available, otherwise synchronous invoke)
                         # StateGraph usually supports .invoke()
                         result = await ai_graph.ainvoke(state)
+                        
+                        # Defensive handling: ensure result is a dictionary
+                        if isinstance(result, str):
+                            # If result is a string, wrap it
+                            result = {"output": result}
+                        elif not isinstance(result, dict):
+                            # If result is neither string nor dict, create default
+                            result = {"output": "I didn't understand that."}
 
                         ai_output = result.get("output", "I didn't understand that.")
+                        
+                        # ---------------------------------------------------------
+                        # BACKGROUND CRS GENERATION THRESHOLD CHECK
+                        # ---------------------------------------------------------
+                        # Start background CRS generation if:
+                        # 1. Intent is "requirement" (not greeting/question)
+                        # 2. Message count >= 3 (title + idea + at least one answer)
+                        # 3. No active generation is running
+                        intent = result.get("intent", "requirement")
+                        if intent == "requirement":
+                            try:
+                                from app.services.background_crs_generator import get_crs_generator, CRSGenerationStatus
+                                
+                                generator = get_crs_generator()
+                                current_status = generator.get_status(chat_id)
+                                
+                                # Count messages in this session
+                                message_count = db.query(Message).filter(
+                                    Message.session_id == chat_id,
+                                    Message.sender_type == SenderType.client
+                                ).count()
+                                
+                                # Only start if IDLE/COMPLETE/ERROR and have at least one message
+                                # This ensures the document is filled gradually as the chat progresses.
+                                if current_status in [CRSGenerationStatus.IDLE, CRSGenerationStatus.COMPLETE, CRSGenerationStatus.ERROR] and message_count >= 1:
+                                    # Queue background generation
+                                    queued = await generator.queue_generation(
+                                        session_id=chat_id,
+                                        project_id=project_id,
+                                        user_id=user.id,
+                                        pattern=crs_pattern_value,
+                                        max_retries=3
+                                    )
+                                    
+                                    if queued:
+                                        print(f"[WebSocket] Queued background CRS generation for session {chat_id}")
+                                        
+                                        # Notify client that CRS generation started
+                                        await manager.broadcast_to_session({
+                                            "type": "crs_generation_started",
+                                            "session_id": chat_id,
+                                            "message": "CRS generation started in background"
+                                        }, chat_id)
+                                    else:
+                                        print(f"[WebSocket] CRS generation already active for session {chat_id}")
+                                        
+                            except Exception as e:
+                                print(f"[WebSocket] Failed to start background CRS generation: {str(e)}")
 
                         # Save AI response to database
                         ai_message = Message(
@@ -497,6 +577,7 @@ async def websocket_endpoint(
                         # Broadcast AI response with optional CRS metadata
                         # CRS metadata is included when the template filler generates a complete CRS
                         ai_response_payload = {
+                            "type": "message",
                             "id": ai_message.id,
                             "session_id": ai_message.session_id,
                             "sender_type": ai_message.sender_type.value,
@@ -505,15 +586,19 @@ async def websocket_endpoint(
                             "timestamp": ai_message.timestamp.isoformat(),
                         }
 
-                        # Include CRS metadata if a complete CRS was generated
+                        # Include CRS metadata if generated
+                        ai_response_payload["crs"] = {
+                            "is_complete": result.get("crs_is_complete", False),
+                            "summary_points": result.get("summary_points", []),
+                            "quality_summary": result.get("quality_summary"),
+                        }
+
                         if result.get("crs_is_complete"):
                             crs_doc_id = result.get("crs_document_id")
-                            ai_response_payload["crs"] = {
+                            ai_response_payload["crs"].update({
                                 "crs_document_id": crs_doc_id,
                                 "version": result.get("crs_version"),
-                                "is_complete": True,
-                                "summary_points": result.get("summary_points", []),
-                            }
+                            })
 
                             # Link the CRS document to this chat session
                             if crs_doc_id:
@@ -532,6 +617,10 @@ async def websocket_endpoint(
                         await manager.broadcast_to_session(ai_response_payload, chat_id)
                         print(f"[WebSocket] AI response sent: {ai_output}")
 
+                        # Note: CRS updates are now handled by background generation service
+                        # The EventBus will receive progressive updates from BackgroundCRSGenerator
+                        # Legacy CRS update code removed to prevent conflicts with background generation
+
                         # Count total messages to verify storage
                         total_msg_count = (
                             db.query(Message)
@@ -543,7 +632,10 @@ async def websocket_endpoint(
                         )
 
                     except Exception as e:
+                        import traceback
+                        error_traceback = traceback.format_exc()
                         print(f"[WebSocket] AI generation error: {str(e)}")
+                        print(f"[WebSocket] Full traceback:\n{error_traceback}")
                         # Optionally send error to client or just log it
 
             except json.JSONDecodeError:
