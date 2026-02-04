@@ -14,6 +14,7 @@ from app.schemas.notification import (
     NotificationMarkRead,
     NotificationResponse,
 )
+from app.services.permission_service import PermissionService
 
 router = APIRouter()
 
@@ -192,16 +193,9 @@ def mark_notification_as_read(
     """
     Mark a specific notification as read.
     """
-    notification = (
-        db.query(Notification)
-        .filter(
-            Notification.id == notification_id, Notification.user_id == current_user.id
-        )
-        .first()
+    notification = PermissionService.verify_notification_ownership(
+        db, notification_id, current_user.id
     )
-
-    if not notification:
-        raise HTTPException(status_code=404, detail="Notification not found")
 
     notification.is_read = True
     db.commit()
@@ -338,16 +332,9 @@ def delete_notification(
     """
     Delete a specific notification.
     """
-    notification = (
-        db.query(Notification)
-        .filter(
-            Notification.id == notification_id, Notification.user_id == current_user.id
-        )
-        .first()
+    notification = PermissionService.verify_notification_ownership(
+        db, notification_id, current_user.id
     )
-
-    if not notification:
-        raise HTTPException(status_code=404, detail="Notification not found")
 
     db.delete(notification)
     db.commit()

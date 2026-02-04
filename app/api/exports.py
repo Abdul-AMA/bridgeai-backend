@@ -5,11 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.api.projects import get_project_or_404, verify_team_membership
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.export import ExportFormat, ExportRequest
+from app.services.permission_service import PermissionService
 from app.services.export_service import (
     crs_to_csv_data,
     export_markdown_bytes,
@@ -28,8 +28,7 @@ def export_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    project = get_project_or_404(db, project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, project_id, current_user.id)
 
     filename = export_req.filename or f"export.{export_req.format.value}"
 

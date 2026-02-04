@@ -14,8 +14,6 @@ from fastapi import (
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session, joinedload
 
-# Import helper functions from projects API
-from app.api.projects import get_project_or_404, verify_team_membership
 from app.core.security import decode_access_token, get_current_user
 from app.db.session import get_db
 from app.models.message import Message, SenderType
@@ -27,6 +25,7 @@ from app.schemas.chat import (
     SessionOut,
     SessionUpdate,
 )
+from app.services.permission_service import PermissionService
 
 router = APIRouter()
 
@@ -76,8 +75,7 @@ def get_project_chats(
 ):
     """Get all chat sessions for a specific project."""
     # Get project and verify access
-    project = get_project_or_404(db, project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, project_id, current_user.id)
 
     # Get all sessions for the project with message count
     sessions = (
@@ -123,8 +121,7 @@ def create_project_chat(
 ):
     """Create a new chat session for a project."""
     # Get project and verify access
-    project = get_project_or_404(db, project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, project_id, current_user.id)
 
     # Create new session
     new_session = SessionModel(
@@ -164,8 +161,7 @@ def get_project_chat(
 ):
     """Get a specific chat session by its ID with all messages."""
     # Get project and verify access
-    project = get_project_or_404(db, project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, project_id, current_user.id)
 
     # Get session and verify it belongs to this project
     session = (
@@ -194,8 +190,7 @@ def update_project_chat(
 ):
     """Update a chat session status."""
     # Get project and verify access
-    project = get_project_or_404(db, project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, project_id, current_user.id)
 
     # Get session and verify it belongs to this project
     session = (
@@ -244,8 +239,7 @@ def delete_project_chat(
 ):
     """Delete a chat session and all its messages."""
     # Get project and verify access
-    project = get_project_or_404(db, project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, project_id, current_user.id)
 
     # Get session and verify it belongs to this project
     session = (
@@ -344,8 +338,7 @@ async def websocket_endpoint(
     # Verify project access
     try:
         print("[WebSocket] Verifying project access...")
-        project = get_project_or_404(db, project_id)
-        verify_team_membership(db, project.team_id, user.id)
+        project = PermissionService.verify_project_access(db, project_id, user.id)
         print("[WebSocket] Project access verified")
     except HTTPException:
         print("[WebSocket] Access denied to project")

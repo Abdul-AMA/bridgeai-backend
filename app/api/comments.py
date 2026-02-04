@@ -9,13 +9,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.projects import get_project_or_404, verify_team_membership
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.comment import Comment
 from app.models.crs import CRSDocument
 from app.models.user import User
 from app.services.notification_service import notify_crs_comment_added
+from app.services.permission_service import PermissionService
 
 router = APIRouter()
 
@@ -52,8 +52,7 @@ def create_comment(
         )
 
     # Verify access
-    project = get_project_or_404(db, crs.project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, crs.project_id, current_user.id)
 
     # Create comment
     comment = Comment(
@@ -100,8 +99,7 @@ def get_comments(
         )
 
     # Verify access
-    project = get_project_or_404(db, crs.project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    PermissionService.verify_project_access(db, crs.project_id, current_user.id)
 
     # Get comments
     comments = (

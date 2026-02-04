@@ -9,12 +9,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.projects import (
-    get_project_or_404,
-    get_user_team_ids,
-    verify_ba_role,
-    verify_team_membership,
-)
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.audit import CRSAuditLog
@@ -22,6 +16,7 @@ from app.models.crs import CRSDocument, CRSPattern, CRSStatus
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.export import ExportFormat
+from app.services.permission_service import PermissionService
 from app.services.crs_service import (
     generate_preview_crs,
     get_crs_by_id,
@@ -147,8 +142,7 @@ def create_crs(
     """
     Create and persist a CRS document for a project.
     """
-    project = get_project_or_404(db, payload.project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, payload.project_id, current_user.id)
 
     # Validate minimum threshold for partial CRS
     if payload.allow_partial:
@@ -251,8 +245,7 @@ def read_latest_crs(
     """
     Fetch the most recent CRS for a project.
     """
-    project = get_project_or_404(db, project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, project_id, current_user.id)
 
     crs = get_latest_crs(db, project_id=project_id)
     if not crs:
@@ -306,8 +299,7 @@ def read_crs_for_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Verify user has access to this session's project
-    project = get_project_or_404(db, session.project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, session.project_id, current_user.id)
 
     # If session has a linked CRS, return it
     if session.crs_document_id:
@@ -379,8 +371,7 @@ async def generate_draft_crs_from_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Verify user has access to this session's project
-    project = get_project_or_404(db, session.project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, session.project_id, current_user.id)
 
     try:
          # Generate preview first
@@ -482,8 +473,7 @@ async def preview_crs_for_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Verify user has access to this session's project
-    project = get_project_or_404(db, session.project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, session.project_id, current_user.id)
 
     try:
         preview_data = await generate_preview_crs(
@@ -514,16 +504,16 @@ def list_crs_for_review(
     Optionally filter by team and/or status.
     """
     # Verify BA role
-    verify_ba_role(current_user)
+    PermissionService.verify_ba_role(current_user)
 
     # Determine which teams to query
     if team_id:
         # Verify BA is member of the specific team
-        verify_team_membership(db, team_id, current_user.id)
+        PermissionService.verify_team_membership(db, team_id, current_user.id)
         team_ids = [team_id]
     else:
         # Get all team IDs where BA is a member
-        team_ids = get_user_team_ids(db, current_user.id)
+        team_ids = PermissionService.get_user_team_ids(db, current_user.id)
 
     # Build query to get CRS documents from projects in BA's teams
     query = (
@@ -611,14 +601,13 @@ def list_my_crs_requests(
     # Apply team filter if provided
     if team_id:
         # Verify user is member of this team
-        verify_team_membership(db, team_id, current_user.id)
+        PermissionService.verify_team_membership(db, team_id, current_user.id)
         query = query.filter(Project.team_id == team_id)
 
     # Apply project filter if provided
     if project_id:
         # Verify user has access to this project
-        project = get_project_or_404(db, project_id)
-        verify_team_membership(db, project.team_id, current_user.id)
+        project = PermissionService.verify_project_access(db, project_id, current_user.id)
         query = query.filter(CRSDocument.project_id == project_id)
 
     # Apply status filter if provided
@@ -689,8 +678,7 @@ def read_crs_versions(
     """
     Fetch all CRS versions for a project, ordered by version descending (newest first).
     """
-    project = get_project_or_404(db, project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, project_id, current_user.id)
 
     versions = get_crs_versions(db, project_id=project_id)
     result = []
@@ -744,8 +732,7 @@ def read_crs(
             status_code=status.HTTP_404_NOT_FOUND, detail="CRS document not found"
         )
 
-    project = get_project_or_404(db, crs.project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, crs.project_id, current_user.id)
 
     try:
         summary_points = json.loads(crs.summary_points) if crs.summary_points else []
@@ -815,27 +802,11 @@ def update_crs_status_endpoint(
             status_code=status.HTTP_404_NOT_FOUND, detail="CRS document not found"
         )
 
-    project = get_project_or_404(db, crs.project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, crs.project_id, current_user.id)
 
     # Only BAs or team admins can approve or reject CRS
     if new_status in [CRSStatus.approved, CRSStatus.rejected]:
-        from app.models.team import TeamMember, TeamRole
-        from app.models.user import UserRole
-        
-        # Check if user is BA or team admin
-        is_ba = current_user.role == UserRole.ba
-        team_member = db.query(TeamMember).filter(
-            TeamMember.team_id == project.team_id,
-            TeamMember.user_id == current_user.id
-        ).first()
-        is_admin = team_member and team_member.role == TeamRole.admin
-        
-        if not (is_ba or is_admin):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only Business Analysts or team admins can approve/reject CRS"
-            )
+        PermissionService.verify_crs_approval_authority(db, crs.project_id, current_user)
 
     # Store old status for notification
     old_status = crs.status.value
@@ -943,8 +914,7 @@ def get_crs_audit_logs(
     crs = get_crs_by_id(db, crs_id=crs_id)
     if not crs:
         raise HTTPException(status_code=404, detail="CRS document not found")
-    project = get_project_or_404(db, crs.project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, crs.project_id, current_user.id)
 
     logs = (
         db.query(CRSAuditLog)
@@ -1001,16 +971,10 @@ def update_crs_content_endpoint(
             status_code=status.HTTP_404_NOT_FOUND, detail="CRS document not found"
         )
 
-    project = get_project_or_404(db, crs.project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, crs.project_id, current_user.id)
 
     # Allow updates only if not in finalized state (approved)
-    # Re-opening rejected ones is fine, but approved ones should probably require a status change first
-    if crs.status == CRSStatus.approved:
-         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="Cannot edit an approved CRS. Please change status to 'under review' or 'draft' first."
-        )
+    PermissionService.verify_crs_editable(crs)
 
     try:
         updated_crs = update_crs_content(
@@ -1092,8 +1056,7 @@ def export_crs(
         )
 
     # Verify access
-    project = get_project_or_404(db, crs.project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, crs.project_id, current_user.id)
 
     filename = f"crs-v{crs.version}.{format.value}"
 
@@ -1255,8 +1218,7 @@ async def stream_crs_updates(
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Verify project access
-    project = get_project_or_404(db, session.project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, session.project_id, current_user.id)
 
     async def event_generator():
         from app.core.events import event_bus

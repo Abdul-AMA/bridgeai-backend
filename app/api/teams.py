@@ -33,6 +33,7 @@ from app.utils.invitation import (
     create_invitation,
     send_invitation_email_to_console,
 )
+from app.services.permission_service import PermissionService
 
 router = APIRouter()
 
@@ -172,28 +173,9 @@ def update_team(
 ):
     """Update team. Only owners and admins can update teams."""
     # Check if user has permission (owner or admin)
-    team_member = (
-        db.query(TeamMember)
-        .filter(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == current_user.id,
-            TeamMember.is_active == True,
-            TeamMember.role.in_([TeamRole.owner, TeamRole.admin]),
-        )
-        .first()
-    )
+    PermissionService.verify_team_admin(db, team_id, current_user.id)
 
-    if not team_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Only team owners and admins can update teams.",
-        )
-
-    team = db.query(Team).filter(Team.id == team_id).first()
-    if not team:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
-        )
+    team = PermissionService.get_team_or_404(db, team_id)
 
     # Validate that only allowed fields are being updated
     update_data = payload.dict(exclude_unset=True)
@@ -240,28 +222,9 @@ def delete_team(
 ):
     """Delete team. Only owners can delete teams."""
     # Check if user is owner
-    team_member = (
-        db.query(TeamMember)
-        .filter(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == current_user.id,
-            TeamMember.is_active == True,
-            TeamMember.role == TeamRole.owner,
-        )
-        .first()
-    )
+    PermissionService.verify_team_owner(db, team_id, current_user.id)
 
-    if not team_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Only team owners can delete teams.",
-        )
-
-    team = db.query(Team).filter(Team.id == team_id).first()
-    if not team:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
-        )
+    team = PermissionService.get_team_or_404(db, team_id)
 
     # Check if team has projects
     project_count = (
@@ -289,29 +252,10 @@ def add_team_member(
 ):
     """Add a member to the team. Only owners and admins can add members."""
     # Check if current user has permission
-    team_member = (
-        db.query(TeamMember)
-        .filter(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == current_user.id,
-            TeamMember.is_active == True,
-            TeamMember.role.in_([TeamRole.owner, TeamRole.admin]),
-        )
-        .first()
-    )
-
-    if not team_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Only team owners and admins can add members.",
-        )
+    PermissionService.verify_team_admin(db, team_id, current_user.id)
 
     # Check if team exists
-    team = db.query(Team).filter(Team.id == team_id).first()
-    if not team:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
-        )
+    team = PermissionService.get_team_or_404(db, team_id)
 
     # Check if user exists
     user = db.query(User).filter(User.id == payload.user_id).first()
@@ -393,22 +337,7 @@ def update_team_member(
 ):
     """Update team member role or status. Only owners and admins can update members."""
     # Check if current user has permission
-    current_member = (
-        db.query(TeamMember)
-        .filter(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == current_user.id,
-            TeamMember.is_active == True,
-            TeamMember.role.in_([TeamRole.owner, TeamRole.admin]),
-        )
-        .first()
-    )
-
-    if not current_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Only team owners and admins can update members.",
-        )
+    current_member = PermissionService.verify_team_admin(db, team_id, current_user.id)
 
     # Get the member to update
     member = (
@@ -464,22 +393,7 @@ def remove_team_member(
 ):
     """Remove a member from the team. Only owners and admins can remove members."""
     # Check if current user has permission
-    current_member = (
-        db.query(TeamMember)
-        .filter(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == current_user.id,
-            TeamMember.is_active == True,
-            TeamMember.role.in_([TeamRole.owner, TeamRole.admin]),
-        )
-        .first()
-    )
-
-    if not current_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Only team owners and admins can remove members.",
-        )
+    current_member = PermissionService.verify_team_admin(db, team_id, current_user.id)
 
     # Get the member to remove
     member = (
@@ -570,29 +484,10 @@ def invite_team_member(
 ):
     """Invite a user to join the team by email. Only owners and admins can invite."""
     # Check if current user has permission to invite
-    team_member = (
-        db.query(TeamMember)
-        .filter(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == current_user.id,
-            TeamMember.is_active == True,
-            TeamMember.role.in_([TeamRole.owner, TeamRole.admin]),
-        )
-        .first()
-    )
-
-    if not team_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Only team owners and admins can invite members.",
-        )
+    PermissionService.verify_team_admin(db, team_id, current_user.id)
 
     # Check if team exists
-    team = db.query(Team).filter(Team.id == team_id).first()
-    if not team:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
-        )
+    team = PermissionService.get_team_or_404(db, team_id)
 
     # Check if user is already a member
     existing_user = db.query(User).filter(User.email == payload.email).first()
@@ -687,22 +582,7 @@ def list_team_invitations(
     Only team owners and admins can view invitations.
     """
     # Check if current user has permission (owner or admin)
-    team_member = (
-        db.query(TeamMember)
-        .filter(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == current_user.id,
-            TeamMember.is_active == True,
-            TeamMember.role.in_([TeamRole.owner, TeamRole.admin]),
-        )
-        .first()
-    )
-
-    if not team_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Only team owners and admins can view invitations.",
-        )
+    PermissionService.verify_team_admin(db, team_id, current_user.id)
 
     # Check if team exists
     team = db.query(Team).filter(Team.id == team_id).first()
@@ -744,22 +624,7 @@ def cancel_invitation(
     Only team owners and admins can cancel invitations.
     """
     # Check if current user has permission (owner or admin)
-    team_member = (
-        db.query(TeamMember)
-        .filter(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == current_user.id,
-            TeamMember.is_active == True,
-            TeamMember.role.in_([TeamRole.owner, TeamRole.admin]),
-        )
-        .first()
-    )
-
-    if not team_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Only team owners and admins can cancel invitations.",
-        )
+    PermissionService.verify_team_admin(db, team_id, current_user.id)
 
     # Get the invitation
     invitation = (
@@ -803,21 +668,7 @@ def get_team_dashboard_stats(
     - Top 10 recent projects
     """
     # Verify team access - check if user is a member of the team
-    team_member = (
-        db.query(TeamMember)
-        .filter(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == current_user.id,
-            TeamMember.is_active == True,
-        )
-        .first()
-    )
-    
-    if not team_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. You are not a member of this team.",
-        )
+    PermissionService.verify_team_membership(db, team_id, current_user.id)
     
     # Get all team projects
     team_projects = db.query(Project).filter(Project.team_id == team_id).all()

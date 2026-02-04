@@ -11,7 +11,7 @@ from app.models.project import Project, ProjectStatus
 from app.models.session_model import SessionModel
 from app.models.crs import CRSDocument
 from app.models.ai_memory_index import AIMemoryIndex
-from app.models.team import Team, TeamMember, TeamRole
+from app.models.team import TeamMember
 from app.models.user import User, UserRole
 from app.schemas.project import (
     ProjectApprovalRequest,
@@ -23,102 +23,9 @@ from app.schemas.project import (
     SessionSimpleOut,
     LatestCRSOut,
 )
+from app.services.permission_service import PermissionService
 
 router = APIRouter()
-
-
-# ==================== Helper Functions ====================
-
-
-def get_team_or_404(db: Session, team_id: int) -> Team:
-    """Get team by ID or raise 404."""
-    team = db.query(Team).filter(Team.id == team_id).first()
-    if not team:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
-        )
-    return team
-
-
-def get_project_or_404(db: Session, project_id: int) -> Project:
-    """Get project by ID or raise 404."""
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
-        )
-    return project
-
-
-def verify_team_membership(
-    db: Session,
-    team_id: int,
-    user_id: int,
-    required_roles: Optional[list[TeamRole]] = None,
-) -> TeamMember:
-    """
-    Verify user is an active member of the team.
-    Optionally check for specific roles.
-    """
-    team_member = (
-        db.query(TeamMember)
-        .filter(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == user_id,
-            TeamMember.is_active == True,
-        )
-        .first()
-    )
-
-    if not team_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You must be a member of this team",
-        )
-
-    if required_roles and team_member.role not in required_roles:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"This action requires one of these roles: {', '.join([r.value for r in required_roles])}",
-        )
-
-    return team_member
-
-
-def check_duplicate_project_name(
-    db: Session, name: str, team_id: int, exclude_id: Optional[int] = None
-):
-    """Check if project name already exists in team."""
-    query = db.query(Project).filter(Project.name == name, Project.team_id == team_id)
-
-    if exclude_id:
-        query = query.filter(Project.id != exclude_id)
-
-    existing = query.first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A project with this name already exists in this team",
-        )
-
-
-def verify_ba_role(user: User):
-    """Verify user is a Business Analyst."""
-    if user.role != UserRole.ba:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Business Analysts can perform this action",
-        )
-
-
-def get_user_team_ids(db: Session, user_id: int) -> list[int]:
-    """Get all team IDs user is a member of."""
-    team_ids = (
-        db.query(TeamMember.team_id)
-        .filter(TeamMember.user_id == user_id, TeamMember.is_active == True)
-        .all()
-    )
-    return [t[0] for t in team_ids]
 
 
 # ==================== Endpoints ====================
@@ -134,10 +41,10 @@ def list_pending_projects(
     Returns pending projects from all teams the BA is a member of.
     """
     # Verify BA role
-    verify_ba_role(current_user)
+    PermissionService.verify_ba_role(current_user)
 
     # Get all team IDs where BA is a member
-    team_ids = get_user_team_ids(db, current_user.id)
+    team_ids = PermissionService.get_user_team_ids(db, current_user.id)
 
     # Query pending projects with eager loading to prevent N+1 queries
     from sqlalchemy.orm import joinedload
@@ -188,13 +95,13 @@ def create_project(
     - Client: Creates project request (pending BA approval)
     """
     # Validate team exists
-    get_team_or_404(db, payload.team_id)
+    PermissionService.get_team_or_404(db, payload.team_id)
 
     # Verify user is team member
-    verify_team_membership(db, payload.team_id, current_user.id)
+    PermissionService.verify_team_membership(db, payload.team_id, current_user.id)
 
     # Check for duplicate name
-    check_duplicate_project_name(db, payload.name, payload.team_id)
+    PermissionService.check_duplicate_project_name(db, payload.name, payload.team_id)
 
     # Determine initial status based on user role
     if current_user.role == UserRole.ba:
@@ -261,10 +168,7 @@ def get_project(
     current_user: User = Depends(get_current_user),
 ):
     """Get project details. Only team members can view."""
-    project = get_project_or_404(db, project_id)
-
-    # Verify user is team member
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, project_id, current_user.id)
 
     return project
 
@@ -285,10 +189,10 @@ def list_projects(
 
     # Filter by specific team or all user's teams
     if team_id:
-        verify_team_membership(db, team_id, current_user.id)
+        PermissionService.verify_team_membership(db, team_id, current_user.id)
         query = query.filter(Project.team_id == team_id)
     else:
-        team_ids = get_user_team_ids(db, current_user.id)
+        team_ids = PermissionService.get_user_team_ids(db, current_user.id)
         query = query.filter(Project.team_id.in_(team_ids))
 
     # Role-based filtering
@@ -316,22 +220,12 @@ def update_project(
     Update project details (name, description).
     Only the creator or BAs can update.
     """
-    # Get project
-    project = get_project_or_404(db, project_id)
-
-    # Verify user is team member
-    verify_team_membership(db, project.team_id, current_user.id)
-
-    # Authorization: Only creator or BA can update
-    if current_user.id != project.created_by and current_user.role != UserRole.ba:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the project creator or Business Analysts can update this project",
-        )
+    # Get project and verify ownership
+    project = PermissionService.verify_project_ownership(db, project_id, current_user, allow_ba=True)
 
     # Check duplicate name if name is being changed
     if payload.name and payload.name != project.name:
-        check_duplicate_project_name(
+        PermissionService.check_duplicate_project_name(
             db, payload.name, project.team_id, exclude_id=project_id
         )
 
@@ -363,13 +257,13 @@ def approve_project(
 ):
     """Approve a pending project request. Only BAs can approve."""
     # Verify BA role
-    verify_ba_role(current_user)
+    PermissionService.verify_ba_role(current_user)
 
     # Get project
-    project = get_project_or_404(db, project_id)
+    project = PermissionService.get_project_or_404(db, project_id)
 
     # Verify BA is team member
-    verify_team_membership(db, project.team_id, current_user.id)
+    PermissionService.verify_team_membership(db, project.team_id, current_user.id)
 
     # Verify project is pending
     if project.status != "pending":
@@ -410,13 +304,13 @@ def reject_project(
 ):
     """Reject a pending project request. Only BAs can reject."""
     # Verify BA role
-    verify_ba_role(current_user)
+    PermissionService.verify_ba_role(current_user)
 
     # Get project
-    project = get_project_or_404(db, project_id)
+    project = PermissionService.get_project_or_404(db, project_id)
 
     # Verify BA is team member
-    verify_team_membership(db, project.team_id, current_user.id)
+    PermissionService.verify_team_membership(db, project.team_id, current_user.id)
 
     # Verify project is pending
     if project.status != "pending":
@@ -464,8 +358,7 @@ def get_project_dashboard_stats(
     - Top 5 recent chats
     """
     # Get project and verify access
-    project = get_project_or_404(db, project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, project_id, current_user.id)
     
     # Calculate chat statistics
     chat_stats_query = (
