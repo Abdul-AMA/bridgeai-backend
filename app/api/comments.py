@@ -2,73 +2,67 @@
 CRS Comments API endpoints.
 """
 
-from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.projects import get_project_or_404, verify_team_membership
 from app.core.security import get_current_user
 from app.db.session import get_db
-from app.models.comment import Comment
-from app.models.crs import CRSDocument
 from app.models.user import User
+from app.services.comment_service import (
+    create_comment,
+    get_comments_by_crs,
+    get_comment_by_id,
+)
 from app.services.notification_service import notify_crs_comment_added
+from app.services.permission_service import PermissionService
+from app.schemas.comment import CommentCreate, CommentOut
+from app.repositories.crs_repository import CRSRepository
+from app.repositories.team_repository import TeamRepository
+from app.repositories.user_repository import UserRepository
 
 router = APIRouter()
 
 
-class CommentCreate(BaseModel):
-    crs_id: int
-    content: str
-
-
-class CommentOut(BaseModel):
-    id: int
-    crs_id: int
-    author_id: int
-    author_name: str
-    content: str
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 @router.post("/", response_model=CommentOut, status_code=status.HTTP_201_CREATED)
-def create_comment(
+def create_comment_endpoint(
     payload: CommentCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Create a comment on a CRS document."""
-    # Verify CRS exists
-    crs = db.query(CRSDocument).filter(CRSDocument.id == payload.crs_id).first()
+    # Verify CRS exists and get it
+    crs_repo = CRSRepository(db)
+    crs = crs_repo.get_by_id(payload.crs_id)
     if not crs:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="CRS document not found"
         )
 
     # Verify access
-    project = get_project_or_404(db, crs.project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    project = PermissionService.verify_project_access(db, crs.project_id, current_user.id)
 
-    # Create comment
-    comment = Comment(
-        crs_id=payload.crs_id, author_id=current_user.id, content=payload.content
-    )
-    db.add(comment)
-    db.commit()
-    db.refresh(comment)
+    # Create comment using service
+    try:
+        comment = create_comment(
+            db, 
+            crs_id=payload.crs_id, 
+            author_id=current_user.id, 
+            content=payload.content
+        )
+        db.commit()
+        db.refresh(comment)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
     # Notify team members
-    from app.models.team import TeamMember
-
-    team_members = (
-        db.query(TeamMember).filter(TeamMember.team_id == project.team_id).all()
-    )
+    from app.repositories.team_repository import TeamMemberRepository
+    team_member_repo = TeamMemberRepository(db)
+    team_members = team_member_repo.get_team_members(project.team_id)
     notify_users = [tm.user_id for tm in team_members]
 
     notify_crs_comment_added(
@@ -93,27 +87,25 @@ def get_comments(
 ):
     """Get all comments for a CRS document."""
     # Verify CRS exists
-    crs = db.query(CRSDocument).filter(CRSDocument.id == crs_id).first()
+    crs_repo = CRSRepository(db)
+    crs = crs_repo.get_by_id(crs_id)
     if not crs:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="CRS document not found"
         )
 
     # Verify access
-    project = get_project_or_404(db, crs.project_id)
-    verify_team_membership(db, project.team_id, current_user.id)
+    PermissionService.verify_project_access(db, crs.project_id, current_user.id)
 
-    # Get comments
-    comments = (
-        db.query(Comment)
-        .filter(Comment.crs_id == crs_id)
-        .order_by(Comment.created_at.desc())
-        .all()
-    )
+    # Get comments using service
+    comments = get_comments_by_crs(db, crs_id=crs_id)
 
+    # Get user repository for author names
+    user_repo = UserRepository(db)
+    
     result = []
     for comment in comments:
-        author = db.query(User).filter(User.id == comment.author_id).first()
+        author = user_repo.get_by_id(comment.author_id)
         result.append(
             CommentOut(
                 id=comment.id,

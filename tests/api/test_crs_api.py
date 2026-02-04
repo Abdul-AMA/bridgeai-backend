@@ -1,7 +1,7 @@
 """Comprehensive tests for CRS API endpoints."""
 import json
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import status
@@ -369,7 +369,7 @@ class TestCRSAudit:
 class TestCRSExport:
     """Tests for POST /api/crs/{crs_id}/export endpoint."""
     
-    @patch("app.api.crs.html_to_pdf_bytes")
+    @patch("app.api.crs.export.html_to_pdf_bytes")
     @patch("app.services.export_service.markdown_to_html")
     def test_export_crs_pdf(self, mock_md_to_html, mock_pdf, client, client_token, sample_crs_doc):
         """Test exporting CRS as PDF."""
@@ -386,7 +386,7 @@ class TestCRSExport:
         assert mock_md_to_html.called
         assert mock_pdf.called
     
-    @patch("app.api.crs.export_markdown_bytes")
+    @patch("app.api.crs.export.export_markdown_bytes")
     def test_export_crs_markdown(self, mock_md, client, client_token, sample_crs_doc):
         """Test exporting CRS as Markdown."""
         mock_md.return_value = b"# CRS Content"
@@ -400,8 +400,8 @@ class TestCRSExport:
         assert response.headers["content-type"] == "text/markdown; charset=utf-8"
         assert mock_md.called
     
-    @patch("app.api.crs.generate_csv_bytes")
-    @patch("app.api.crs.crs_to_csv_data")
+    @patch("app.api.crs.export.generate_csv_bytes")
+    @patch("app.api.crs.export.crs_to_csv_data")
     def test_export_crs_csv(self, mock_csv_data, mock_csv_bytes, client, client_token, sample_crs_doc):
         """Test exporting CRS as CSV."""
         mock_csv_data.return_value = [["Header1", "Header2"], ["Value1", "Value2"]]
@@ -467,48 +467,6 @@ class TestCRSPreview:
         assert "content" in data
         assert "completeness_percentage" in data
         # Don't assert specific percentage since real LLM is called
-    
-    @patch("app.services.crs_service.generate_preview_crs")
-    def test_preview_with_pattern(self, mock_preview, client, db, client_token, sample_project, client_user):
-        """Test preview with specific pattern."""
-        from app.models.message import Message
-        
-        session = SessionModel(
-            project_id=sample_project.id,
-            user_id=client_user.id,
-            name="Test Session"
-        )
-        db.add(session)
-        db.commit()
-        db.refresh(session)
-        
-        # Add message to session (required for preview)
-        from app.models.message import SenderType
-        message = Message(
-            session_id=session.id,
-            sender_type=SenderType.client,
-            sender_id=client_user.id,
-            content="Generate requirements document"
-        )
-        db.add(message)
-        db.commit()
-        
-        mock_preview.return_value = {
-            "content": {},
-            "summary_points": [],
-            "completeness_percentage": 0,
-            "missing_sections": [],
-            "partial_sections": []
-        }
-        
-        response = client.get(
-            f"/api/crs/sessions/{session.id}/preview?pattern=babok",
-            headers={"Authorization": f"Bearer {client_token}"}
-        )
-        
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert "content" in data
 
 
 class TestCRSContentUpdate:

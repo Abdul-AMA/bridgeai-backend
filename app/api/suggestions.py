@@ -2,10 +2,9 @@
 API endpoints for creative suggestions
 """
 
-from typing import Any, Dict, List, Optional
+from typing import List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.ai.memory_service import search_project_memories
@@ -15,27 +14,9 @@ from app.ai.nodes.suggestions.llm_suggestions_generator import (
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.user import User
+from app.schemas.suggestion import SuggestionsRequest, SuggestionResponse
 
 router = APIRouter(prefix="/suggestions", tags=["suggestions"])
-
-
-# ============= Schemas =============
-class SuggestionsRequest(BaseModel):
-    project_id: int
-    context: Optional[str] = None  # Additional context from user
-    categories: Optional[List[str]] = None  # Specific categories to focus on
-
-
-class SuggestionResponse(BaseModel):
-    category: str
-    title: str
-    description: str
-    value_proposition: str
-    complexity: str
-    priority: str
-
-
-# ============= Endpoints =============
 
 
 @router.post("/generate", response_model=List[SuggestionResponse])

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.memory_service import create_memory
 from app.models.crs import CRSDocument, CRSPattern, CRSStatus
+from app.repositories.crs_repository import CRSRepository, SessionRepository, MessageRepository
 
 logger = logging.getLogger(__name__)
 
@@ -87,12 +88,8 @@ def persist_crs_document(
 
 def get_latest_crs(db: Session, *, project_id: int) -> Optional[CRSDocument]:
     """Return the most recent CRS for a project (highest version number)."""
-    return (
-        db.query(CRSDocument)
-        .filter(CRSDocument.project_id == project_id)
-        .order_by(CRSDocument.version.desc())
-        .first()
-    )
+    crs_repo = CRSRepository(db)
+    return crs_repo.get_latest_by_project(project_id)
 
 
 def get_crs_versions(db: Session, *, project_id: int) -> List[CRSDocument]:
@@ -106,12 +103,8 @@ def get_crs_versions(db: Session, *, project_id: int) -> List[CRSDocument]:
     Returns:
         List of CRSDocument objects ordered by version (newest first)
     """
-    return (
-        db.query(CRSDocument)
-        .filter(CRSDocument.project_id == project_id)
-        .order_by(CRSDocument.version.desc())
-        .all()
-    )
+    crs_repo = CRSRepository(db)
+    return crs_repo.get_project_crs_list(project_id)
 
 
 def update_crs_status(
@@ -140,7 +133,8 @@ def update_crs_status(
     Raises:
         ValueError: If CRS not found or version mismatch (optimistic locking conflict)
     """
-    crs = db.query(CRSDocument).filter(CRSDocument.id == crs_id).first()
+    crs_repo = CRSRepository(db)
+    crs = crs_repo.get_by_id(crs_id)
     if not crs:
         raise ValueError(f"CRS document with id={crs_id} not found")
 
@@ -171,7 +165,8 @@ def get_crs_by_id(db: Session, *, crs_id: int) -> Optional[CRSDocument]:
     """
     Fetch a CRS document by its ID.
     """
-    return db.query(CRSDocument).filter(CRSDocument.id == crs_id).first()
+    crs_repo = CRSRepository(db)
+    return crs_repo.get_by_id(crs_id)
 
 
 async def generate_preview_crs(
@@ -200,7 +195,8 @@ async def generate_preview_crs(
     from app.models.session_model import SessionModel
 
     # Get session and verify access
-    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    session_repo = SessionRepository(db)
+    session = session_repo.get_by_id(session_id)
     if not session:
         raise ValueError(f"Session with id={session_id} not found")
 
@@ -208,12 +204,8 @@ async def generate_preview_crs(
         raise ValueError("User does not have access to this session")
 
     # Get conversation history
-    messages = (
-        db.query(Message)
-        .filter(Message.session_id == session_id)
-        .order_by(Message.timestamp.asc())
-        .all()
-    )
+    message_repo = MessageRepository(db)
+    messages = message_repo.get_session_messages(session_id)
 
     if not messages:
         raise ValueError("No messages found in session")
@@ -301,7 +293,8 @@ def update_crs_content(
     Raises:
         ValueError: If CRS not found or version mismatch
     """
-    crs = db.query(CRSDocument).filter(CRSDocument.id == crs_id).first()
+    crs_repo = CRSRepository(db)
+    crs = crs_repo.get_by_id(crs_id)
     if not crs:
         raise ValueError(f"CRS document with id={crs_id} not found")
 

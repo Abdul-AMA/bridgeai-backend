@@ -14,6 +14,8 @@ from app.schemas.notification import (
     NotificationMarkRead,
     NotificationResponse,
 )
+from app.services.permission_service import PermissionService
+from app.services import notification_service
 
 router = APIRouter()
 
@@ -192,16 +194,9 @@ def mark_notification_as_read(
     """
     Mark a specific notification as read.
     """
-    notification = (
-        db.query(Notification)
-        .filter(
-            Notification.id == notification_id, Notification.user_id == current_user.id
-        )
-        .first()
+    notification = PermissionService.verify_notification_ownership(
+        db, notification_id, current_user.id
     )
-
-    if not notification:
-        raise HTTPException(status_code=404, detail="Notification not found")
 
     notification.is_read = True
     db.commit()
@@ -298,27 +293,15 @@ def accept_invitation_from_notification(
     # Mark notification as read
     notification.is_read = True
 
-    # Notify team owner
-    team_owner = (
-        db.query(TeamMember)
-        .filter(
-            TeamMember.team_id == invitation.team_id,
-            TeamMember.role == TeamRole.owner,
-            TeamMember.is_active == True,
-        )
-        .first()
+    # Notify team owner (service will handle finding the owner)
+    notification_service.notify_invitation_accepted(
+        db=db,
+        team_id=invitation.team_id,
+        acceptor_name=current_user.full_name,
+        acceptor_email=current_user.email,
+        role=invitation.role,
+        commit=False,
     )
-
-    if team_owner and team_owner.user_id != current_user.id:
-        owner_notification = Notification(
-            user_id=team_owner.user_id,
-            type=NotificationType.TEAM_INVITATION,
-            reference_id=invitation.team_id,
-            title="New Team Member",
-            message=f"{current_user.full_name} ({current_user.email}) has joined the team as {invitation.role}.",
-            is_read=False,
-        )
-        db.add(owner_notification)
 
     db.commit()
 
@@ -338,16 +321,9 @@ def delete_notification(
     """
     Delete a specific notification.
     """
-    notification = (
-        db.query(Notification)
-        .filter(
-            Notification.id == notification_id, Notification.user_id == current_user.id
-        )
-        .first()
+    notification = PermissionService.verify_notification_ownership(
+        db, notification_id, current_user.id
     )
-
-    if not notification:
-        raise HTTPException(status_code=404, detail="Notification not found")
 
     db.delete(notification)
     db.commit()

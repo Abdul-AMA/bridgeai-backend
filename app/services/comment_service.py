@@ -6,14 +6,14 @@ import logging
 import uuid
 from typing import List, Optional
 
-from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.ai import chroma_manager
-from app.models.ai_memory_index import AIMemoryIndex, SourceType
+from app.models.ai_memory_index import SourceType
 from app.models.comment import Comment
-from app.models.crs import CRSDocument
-from app.models.user import User
+from app.repositories.crs_repository import CRSRepository, CommentRepository
+from app.repositories.user_repository import UserRepository
+from app.repositories.ai_memory_repository import AIMemoryIndexRepository
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,8 @@ def create_comment(
         ValueError: If CRS document not found
     """
     # Verify CRS document exists
-    crs = db.query(CRSDocument).filter(CRSDocument.id == crs_id).first()
+    crs_repo = CRSRepository(db)
+    crs = crs_repo.get_by_id(crs_id)
     if not crs:
         raise ValueError(f"CRS document with id={crs_id} not found")
 
@@ -54,7 +55,8 @@ def create_comment(
         embedding_id = str(uuid.uuid4())
 
         # Get author details for metadata
-        author = db.query(User).filter(User.id == author_id).first()
+        user_repo = UserRepository(db)
+        author = user_repo.get_by_id(author_id)
         author_role = author.role.value if author else "unknown"
 
         # Store in Vector DB
@@ -71,15 +73,14 @@ def create_comment(
             },
         )
 
-        # Create Index Record
-        index_record = AIMemoryIndex(
-            project_id=crs.project_id,
-            source_type=SourceType.comment,
-            source_id=comment.id,
-            embedding_id=embedding_id,
-        )
-        db.add(index_record)
-        db.commit()
+        # Create Index Record using repository
+        memory_repo = AIMemoryIndexRepository(db)
+        index_record = memory_repo.create({
+            "project_id": crs.project_id,
+            "source_type": SourceType.comment,
+            "source_id": comment.id,
+            "embedding_id": embedding_id,
+        })
         logger.info(f"Comment {comment.id} stored in AI memory with id {embedding_id}")
 
     except Exception as e:
@@ -105,14 +106,8 @@ def get_comments_by_crs(
     Returns:
         List of Comment objects ordered by creation time (newest first)
     """
-    return (
-        db.query(Comment)
-        .filter(Comment.crs_id == crs_id)
-        .order_by(desc(Comment.created_at))
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    comment_repo = CommentRepository(db)
+    return comment_repo.get_crs_comments(crs_id, skip=skip, limit=limit)
 
 
 def get_comment_by_id(db: Session, *, comment_id: int) -> Optional[Comment]:
@@ -126,7 +121,8 @@ def get_comment_by_id(db: Session, *, comment_id: int) -> Optional[Comment]:
     Returns:
         Comment object or None if not found
     """
-    return db.query(Comment).filter(Comment.id == comment_id).first()
+    comment_repo = CommentRepository(db)
+    return comment_repo.get_by_id(comment_id)
 
 
 def update_comment(db: Session, *, comment_id: int, content: str) -> Comment:
@@ -144,7 +140,8 @@ def update_comment(db: Session, *, comment_id: int, content: str) -> Comment:
     Raises:
         ValueError: If comment not found
     """
-    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    comment_repo = CommentRepository(db)
+    comment = comment_repo.get_by_id(comment_id)
     if not comment:
         raise ValueError(f"Comment with id={comment_id} not found")
 
@@ -157,21 +154,17 @@ def update_comment(db: Session, *, comment_id: int, content: str) -> Comment:
     # Update in AI Memory
     try:
         # Find associated index record
-        index_record = (
-            db.query(AIMemoryIndex)
-            .filter(
-                AIMemoryIndex.source_type == SourceType.comment,
-                AIMemoryIndex.source_id == comment_id,
-            )
-            .first()
-        )
+        memory_repo = AIMemoryIndexRepository(db)
+        index_record = memory_repo.get_by_source(SourceType.comment, comment_id)
 
         if index_record:
-            # Get CRS project_id (need to join or fetch)
-            crs = db.query(CRSDocument).filter(CRSDocument.id == comment.crs_id).first()
+            # Get CRS project_id
+            crs_repo = CRSRepository(db)
+            crs = crs_repo.get_by_id(comment.crs_id)
             project_id = crs.project_id if crs else 0
 
-            author = db.query(User).filter(User.id == comment.author_id).first()
+            user_repo = UserRepository(db)
+            author = user_repo.get_by_id(comment.author_id)
             author_role = author.role.value if author else "unknown"
 
             # Simple re-store (upsert)
@@ -206,20 +199,15 @@ def delete_comment(db: Session, *, comment_id: int) -> bool:
     Returns:
         True if deleted, False if not found
     """
-    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    comment_repo = CommentRepository(db)
+    comment = comment_repo.get_by_id(comment_id)
     if not comment:
         return False
 
-    # Delete from AI Memory first (to retrieve index before deleting comment if needed, though index likely remains)
+    # Delete from AI Memory first
     try:
-        index_record = (
-            db.query(AIMemoryIndex)
-            .filter(
-                AIMemoryIndex.source_type == SourceType.comment,
-                AIMemoryIndex.source_id == comment_id,
-            )
-            .first()
-        )
+        memory_repo = AIMemoryIndexRepository(db)
+        index_record = memory_repo.get_by_source(SourceType.comment, comment_id)
 
         if index_record:
             chroma_manager.delete_embedding(index_record.embedding_id)
@@ -247,4 +235,5 @@ def get_comments_count_by_crs(db: Session, *, crs_id: int) -> int:
     Returns:
         Total number of comments
     """
-    return db.query(Comment).filter(Comment.crs_id == crs_id).count()
+    comment_repo = CommentRepository(db)
+    return comment_repo.count_by_crs_id(crs_id)
