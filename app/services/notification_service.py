@@ -11,6 +11,7 @@ from app.models.notification import Notification
 from app.models.project import Project
 from app.models.user import User
 from app.utils.email import send_email
+from app.repositories.user_repository import UserRepository
 
 
 def create_notification(
@@ -103,8 +104,9 @@ def notify_crs_created(
     send_email_notification: bool = True,
 ):
     """Notify users when a CRS is created."""
+    user_repo = UserRepository(db)
     for user_id in notify_users:
-        user = db.query(User).filter(User.id == user_id).first()
+        user = user_repo.get_by_id(user_id)
         if not user:
             continue
 
@@ -142,8 +144,9 @@ def notify_crs_updated(
     send_email_notification: bool = True,
 ):
     """Notify users when a CRS is updated."""
+    user_repo = UserRepository(db)
     for user_id in notify_users:
-        user = db.query(User).filter(User.id == user_id).first()
+        user = user_repo.get_by_id(user_id)
         if not user:
             continue
 
@@ -183,8 +186,9 @@ def notify_crs_status_changed(
     send_email_notification: bool = True,
 ):
     """Notify users when CRS status changes."""
+    user_repo = UserRepository(db)
     for user_id in notify_users:
-        user = db.query(User).filter(User.id == user_id).first()
+        user = user_repo.get_by_id(user_id)
         if not user:
             continue
 
@@ -224,11 +228,12 @@ def notify_crs_comment_added(
     send_email_notification: bool = True,
 ):
     """Notify users when a comment is added to CRS."""
+    user_repo = UserRepository(db)
     for user_id in notify_users:
         if user_id == comment_author.id:
             continue
 
-        user = db.query(User).filter(User.id == user_id).first()
+        user = user_repo.get_by_id(user_id)
         if not user:
             continue
 
@@ -267,8 +272,9 @@ def notify_crs_approved(
     send_email_notification: bool = True,
 ):
     """Notify users when CRS is approved."""
+    user_repo = UserRepository(db)
     for user_id in notify_users:
-        user = db.query(User).filter(User.id == user_id).first()
+        user = user_repo.get_by_id(user_id)
         if not user:
             continue
 
@@ -308,8 +314,9 @@ def notify_crs_rejected(
     send_email_notification: bool = True,
 ):
     """Notify users when CRS is rejected."""
+    user_repo = UserRepository(db)
     for user_id in notify_users:
-        user = db.query(User).filter(User.id == user_id).first()
+        user = user_repo.get_by_id(user_id)
         if not user:
             continue
 
@@ -348,7 +355,8 @@ def notify_crs_review_assignment(
     send_email_notification: bool = True,
 ):
     """Notify user when assigned to review a CRS."""
-    user = db.query(User).filter(User.id == reviewer_id).first()
+    user_repo = UserRepository(db)
+    user = user_repo.get_by_id(reviewer_id)
     if not user:
         return
 

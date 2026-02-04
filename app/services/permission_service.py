@@ -8,7 +8,7 @@ across the application.
 SOLID Principles:
 - Single Responsibility: Only handles authorization/permission logic
 - Open/Closed: Easy to extend with new permission checks
-- Dependency Inversion: Routes depend on this abstraction, not direct queries
+- Dependency Inversion: Routes depend on this abstraction, not repositories
 """
 
 from typing import Optional, List
@@ -20,12 +20,16 @@ from app.models.team import Team, TeamMember, TeamRole
 from app.models.project import Project
 from app.models.crs import CRSDocument, CRSStatus
 from app.models.notification import Notification
+from app.repositories.team_repository import TeamRepository, TeamMemberRepository
+from app.repositories.project_repository import ProjectRepository
+from app.repositories.crs_repository import CRSRepository
+from app.repositories.notification_repository import NotificationRepository
 
 
 class PermissionService:
     """
     Centralized service for all permission and authorization checks.
-    
+
     This service provides a consistent interface for verifying user permissions
     across teams, projects, CRS documents, and other resources.
     """
@@ -43,30 +47,23 @@ class PermissionService:
     ) -> TeamMember:
         """
         Verify user is an active member of a team.
-        
+
         Args:
             db: Database session
             team_id: Team ID to check membership for
             user_id: User ID to verify
             required_roles: Optional list of required roles (owner, admin, member)
-            
+
         Returns:
             TeamMember object if authorized
-            
+
         Raises:
             HTTPException 403: If user is not a member or lacks required role
         """
-        team_member = (
-            db.query(TeamMember)
-            .filter(
-                TeamMember.team_id == team_id,
-                TeamMember.user_id == user_id,
-                TeamMember.is_active == True,
-            )
-            .first()
-        )
+        team_member_repo = TeamMemberRepository(db)
+        team_member = team_member_repo.get_by_team_and_user(team_id, user_id)
 
-        if not team_member:
+        if not team_member or not team_member.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You must be a member of this team",
@@ -89,30 +86,26 @@ class PermissionService:
     ) -> TeamMember:
         """
         Verify user is a team admin or owner.
-        
+
         Args:
             db: Database session
             team_id: Team ID to check
             user_id: User ID to verify
-            
+
         Returns:
             TeamMember object if authorized
-            
+
         Raises:
             HTTPException 403: If user is not an admin or owner
         """
-        team_member = (
-            db.query(TeamMember)
-            .filter(
-                TeamMember.team_id == team_id,
-                TeamMember.user_id == user_id,
-                TeamMember.is_active == True,
-                TeamMember.role.in_([TeamRole.owner, TeamRole.admin]),
-            )
-            .first()
-        )
+        team_member_repo = TeamMemberRepository(db)
+        team_member = team_member_repo.get_by_team_and_user(team_id, user_id)
 
-        if not team_member:
+        if (
+            not team_member
+            or not team_member.is_active
+            or team_member.role not in [TeamRole.owner, TeamRole.admin]
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied. Only team owners and admins can perform this action.",
@@ -128,30 +121,26 @@ class PermissionService:
     ) -> TeamMember:
         """
         Verify user is the team owner.
-        
+
         Args:
             db: Database session
             team_id: Team ID to check
             user_id: User ID to verify
-            
+
         Returns:
             TeamMember object if authorized
-            
+
         Raises:
             HTTPException 403: If user is not the team owner
         """
-        team_member = (
-            db.query(TeamMember)
-            .filter(
-                TeamMember.team_id == team_id,
-                TeamMember.user_id == user_id,
-                TeamMember.is_active == True,
-                TeamMember.role == TeamRole.owner,
-            )
-            .first()
-        )
+        team_member_repo = TeamMemberRepository(db)
+        team_member = team_member_repo.get_by_team_and_user(team_id, user_id)
 
-        if not team_member:
+        if (
+            not team_member
+            or not team_member.is_active
+            or team_member.role != TeamRole.owner
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied. Only the team owner can perform this action.",
@@ -167,10 +156,10 @@ class PermissionService:
     def verify_ba_role(user: User) -> None:
         """
         Verify user has the Business Analyst role.
-        
+
         Args:
             user: Current user object
-            
+
         Raises:
             HTTPException 403: If user is not a Business Analyst
         """
@@ -192,28 +181,28 @@ class PermissionService:
     ) -> Project:
         """
         Verify user has access to a project via team membership.
-        
+
         Args:
             db: Database session
             project_id: Project ID to check
             user_id: User ID to verify
-            
+
         Returns:
             Project object if authorized
-            
+
         Raises:
             HTTPException 404: If project not found
             HTTPException 403: If user not a member of project's team
         """
         project = PermissionService.get_project_or_404(db, project_id)
-        
+
         # Verify team membership
         PermissionService.verify_team_membership(
             db=db,
             team_id=project.team_id,
             user_id=user_id,
         )
-        
+
         return project
 
     @staticmethod
@@ -225,31 +214,31 @@ class PermissionService:
     ) -> Project:
         """
         Verify user is the project creator or (optionally) a Business Analyst.
-        
+
         Args:
             db: Database session
             project_id: Project ID to check
             user: Current user object
             allow_ba: Whether to allow BA access (default: True)
-            
+
         Returns:
             Project object if authorized
-            
+
         Raises:
             HTTPException 404: If project not found
             HTTPException 403: If user is neither creator nor BA
         """
         project = PermissionService.get_project_or_404(db, project_id)
-        
+
         is_creator = user.id == project.created_by
         is_ba = user.role == UserRole.ba
-        
+
         if not is_creator and not (allow_ba and is_ba):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only the project creator or Business Analysts can perform this action",
             )
-        
+
         return project
 
     # ========================================
@@ -264,33 +253,34 @@ class PermissionService:
     ) -> CRSDocument:
         """
         Verify user has access to a CRS document via project team membership.
-        
+
         Args:
             db: Database session
             crs_id: CRS document ID to check
             user_id: User ID to verify
-            
+
         Returns:
             CRSDocument object if authorized
-            
+
         Raises:
             HTTPException 404: If CRS not found
             HTTPException 403: If user not a member of the project's team
         """
-        crs = db.query(CRSDocument).filter(CRSDocument.id == crs_id).first()
+        crs_repo = CRSRepository(db)
+        crs = crs_repo.get_by_id(crs_id)
         if not crs:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="CRS document not found",
             )
-        
+
         # Verify access via project
         PermissionService.verify_project_access(
             db=db,
             project_id=crs.project_id,
             user_id=user_id,
         )
-        
+
         return crs
 
     @staticmethod
@@ -301,32 +291,26 @@ class PermissionService:
     ) -> None:
         """
         Verify user can approve/reject CRS documents (BA or team admin).
-        
+
         Args:
             db: Database session
             project_id: Project ID the CRS belongs to
             user: Current user object
-            
+
         Raises:
             HTTPException 403: If user is neither BA nor team admin
         """
         # Check if user is BA
         if user.role == UserRole.ba:
             return
-        
+
         # Check if user is team admin
         project = PermissionService.get_project_or_404(db, project_id)
-        team_member = (
-            db.query(TeamMember)
-            .filter(
-                TeamMember.team_id == project.team_id,
-                TeamMember.user_id == user.id,
-            )
-            .first()
-        )
-        
+        team_member_repo = TeamMemberRepository(db)
+        team_member = team_member_repo.get_by_team_and_user(project.team_id, user.id)
+
         is_admin = team_member and team_member.role == TeamRole.admin
-        
+
         if not is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -337,10 +321,10 @@ class PermissionService:
     def verify_crs_editable(crs: CRSDocument) -> None:
         """
         Verify CRS document can be edited (not approved).
-        
+
         Args:
             crs: CRS document to check
-            
+
         Raises:
             HTTPException 400: If CRS is approved and cannot be edited
         """
@@ -362,28 +346,22 @@ class PermissionService:
     ) -> Notification:
         """
         Verify user owns a notification.
-        
+
         Args:
             db: Database session
             notification_id: Notification ID to check
             user_id: User ID to verify
-            
+
         Returns:
             Notification object if authorized
-            
+
         Raises:
             HTTPException 404: If notification not found or not owned by user
         """
-        notification = (
-            db.query(Notification)
-            .filter(
-                Notification.id == notification_id,
-                Notification.user_id == user_id,
-            )
-            .first()
-        )
+        notification_repo = NotificationRepository(db)
+        notification = notification_repo.get_by_id(notification_id)
 
-        if not notification:
+        if not notification or notification.user_id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Notification not found",
@@ -399,18 +377,19 @@ class PermissionService:
     def get_team_or_404(db: Session, team_id: int) -> Team:
         """
         Get team by ID or raise 404.
-        
+
         Args:
             db: Database session
             team_id: Team ID to retrieve
-            
+
         Returns:
             Team object
-            
+
         Raises:
             HTTPException 404: If team not found
         """
-        team = db.query(Team).filter(Team.id == team_id).first()
+        team_repo = TeamRepository(db)
+        team = team_repo.get_by_id(team_id)
         if not team:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -422,18 +401,19 @@ class PermissionService:
     def get_project_or_404(db: Session, project_id: int) -> Project:
         """
         Get project by ID or raise 404.
-        
+
         Args:
             db: Database session
             project_id: Project ID to retrieve
-            
+
         Returns:
             Project object
-            
+
         Raises:
             HTTPException 404: If project not found
         """
-        project = db.query(Project).filter(Project.id == project_id).first()
+        project_repo = ProjectRepository(db)
+        project = project_repo.get_by_id(project_id)
         if not project:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -449,23 +429,25 @@ class PermissionService:
     def get_user_team_ids(db: Session, user_id: int) -> List[int]:
         """
         Get all team IDs user is an active member of.
-        
+
         Args:
             db: Database session
             user_id: User ID to get teams for
-            
+
         Returns:
             List of team IDs
         """
-        team_ids = (
-            db.query(TeamMember.team_id)
+        team_member_repo = TeamMemberRepository(db)
+        # Get all team members for this user
+        team_members = (
+            db.query(TeamMember)
             .filter(
                 TeamMember.user_id == user_id,
                 TeamMember.is_active == True,
             )
             .all()
         )
-        return [team_id[0] for team_id in team_ids]
+        return [tm.team_id for tm in team_members]
 
     @staticmethod
     def check_duplicate_project_name(
@@ -476,25 +458,19 @@ class PermissionService:
     ) -> None:
         """
         Check if project name already exists in team.
-        
+
         Args:
             db: Database session
             name: Project name to check
             team_id: Team ID to check within
             exclude_id: Optional project ID to exclude from check (for updates)
-            
+
         Raises:
             HTTPException 400: If duplicate name exists
         """
-        query = db.query(Project).filter(
-            Project.name == name,
-            Project.team_id == team_id,
-        )
+        project_repo = ProjectRepository(db)
+        existing = project_repo.get_by_name_and_team(name, team_id, exclude_id)
 
-        if exclude_id:
-            query = query.filter(Project.id != exclude_id)
-
-        existing = query.first()
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
