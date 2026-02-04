@@ -1,7 +1,7 @@
 """Comprehensive tests for CRS API endpoints."""
 import json
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import status
@@ -369,7 +369,7 @@ class TestCRSAudit:
 class TestCRSExport:
     """Tests for POST /api/crs/{crs_id}/export endpoint."""
     
-    @patch("app.api.crs.html_to_pdf_bytes")
+    @patch("app.api.crs.export.html_to_pdf_bytes")
     @patch("app.services.export_service.markdown_to_html")
     def test_export_crs_pdf(self, mock_md_to_html, mock_pdf, client, client_token, sample_crs_doc):
         """Test exporting CRS as PDF."""
@@ -386,7 +386,7 @@ class TestCRSExport:
         assert mock_md_to_html.called
         assert mock_pdf.called
     
-    @patch("app.api.crs.export_markdown_bytes")
+    @patch("app.api.crs.export.export_markdown_bytes")
     def test_export_crs_markdown(self, mock_md, client, client_token, sample_crs_doc):
         """Test exporting CRS as Markdown."""
         mock_md.return_value = b"# CRS Content"
@@ -400,8 +400,8 @@ class TestCRSExport:
         assert response.headers["content-type"] == "text/markdown; charset=utf-8"
         assert mock_md.called
     
-    @patch("app.api.crs.generate_csv_bytes")
-    @patch("app.api.crs.crs_to_csv_data")
+    @patch("app.api.crs.export.generate_csv_bytes")
+    @patch("app.api.crs.export.crs_to_csv_data")
     def test_export_crs_csv(self, mock_csv_data, mock_csv_bytes, client, client_token, sample_crs_doc):
         """Test exporting CRS as CSV."""
         mock_csv_data.return_value = [["Header1", "Header2"], ["Value1", "Value2"]]
@@ -468,7 +468,7 @@ class TestCRSPreview:
         assert "completeness_percentage" in data
         # Don't assert specific percentage since real LLM is called
     
-    @patch("app.services.crs_service.generate_preview_crs")
+    @patch("app.api.crs.versioning.generate_preview_crs", new_callable=AsyncMock)
     def test_preview_with_pattern(self, mock_preview, client, db, client_token, sample_project, client_user):
         """Test preview with specific pattern."""
         from app.models.message import Message
