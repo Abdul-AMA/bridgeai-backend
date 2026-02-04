@@ -2,11 +2,9 @@
 CRS Comments API endpoints.
 """
 
-from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
@@ -16,25 +14,9 @@ from app.models.crs import CRSDocument
 from app.models.user import User
 from app.services.notification_service import notify_crs_comment_added
 from app.services.permission_service import PermissionService
+from app.schemas.comment import CommentCreate, CommentOut
 
 router = APIRouter()
-
-
-class CommentCreate(BaseModel):
-    crs_id: int
-    content: str
-
-
-class CommentOut(BaseModel):
-    id: int
-    crs_id: int
-    author_id: int
-    author_name: str
-    content: str
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 @router.post("/", response_model=CommentOut, status_code=status.HTTP_201_CREATED)

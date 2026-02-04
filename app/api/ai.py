@@ -1,29 +1,11 @@
-from typing import Any, Dict, List, Optional
-
 from fastapi import APIRouter
-from pydantic import BaseModel
 
 from app.ai.graph import create_graph
 from app.ai.state import AgentState
+from app.schemas.ai import RequirementInput, ClarificationResponse
 
 router = APIRouter()
 graph = create_graph()
-
-
-class RequirementInput(BaseModel):
-    user_input: str
-    conversation_history: Optional[List[str]] = []
-    extracted_fields: Optional[Dict[str, Any]] = {}
-
-
-class ClarificationResponse(BaseModel):
-    output: str
-    clarification_questions: List[str]
-    ambiguities: List[Dict[str, Any]]
-    needs_clarification: bool
-    clarity_score: Optional[int] = None
-    quality_summary: Optional[str] = None
-    last_node: Optional[str] = None
 
 
 @router.post("/analyze-requirements", response_model=ClarificationResponse)

@@ -2,10 +2,7 @@
 API endpoints for memory management
 """
 
-from typing import Any, Dict, Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.ai.memory_service import (
@@ -18,27 +15,9 @@ from app.ai.memory_service import (
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.user import User
+from app.schemas.memory import MemoryCreateRequest, MemorySearchRequest
 
 router = APIRouter(prefix="/memory", tags=["memory"])
-
-
-# ============= Schemas =============
-class MemoryCreateRequest(BaseModel):
-    project_id: int
-    text: str
-    source_type: str  # crs, message, comment, summary
-    source_id: int
-    metadata: Optional[Dict[str, Any]] = None
-
-
-class MemorySearchRequest(BaseModel):
-    project_id: int
-    query: str
-    limit: int = 5
-    similarity_threshold: float = 0.3
-
-
-# ============= Endpoints =============
 
 
 @router.post("/create")
