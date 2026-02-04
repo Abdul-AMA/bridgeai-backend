@@ -15,6 +15,7 @@ from app.schemas.notification import (
     NotificationResponse,
 )
 from app.services.permission_service import PermissionService
+from app.services import notification_service
 
 router = APIRouter()
 
@@ -304,15 +305,15 @@ def accept_invitation_from_notification(
     )
 
     if team_owner and team_owner.user_id != current_user.id:
-        owner_notification = Notification(
-            user_id=team_owner.user_id,
-            type=NotificationType.TEAM_INVITATION,
-            reference_id=invitation.team_id,
-            title="New Team Member",
-            message=f"{current_user.full_name} ({current_user.email}) has joined the team as {invitation.role}.",
-            is_read=False,
+        notification_service.notify_invitation_accepted(
+            db=db,
+            team_id=invitation.team_id,
+            acceptor_name=current_user.full_name,
+            acceptor_email=current_user.email,
+            role=invitation.role,
+            owner_user_id=team_owner.user_id,
+            commit=False,
         )
-        db.add(owner_notification)
 
     db.commit()
 

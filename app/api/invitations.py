@@ -6,7 +6,6 @@ from app.core.rate_limit import limiter
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.invitation import Invitation
-from app.models.notification import Notification, NotificationType
 from app.models.team import Team, TeamMember, TeamRole
 from app.models.user import User
 from app.schemas.invitation import (
@@ -19,6 +18,7 @@ from app.utils.invitation import (
     create_invitation,
     send_invitation_email_to_console,
 )
+from app.services import notification_service
 
 router = APIRouter()
 
@@ -148,15 +148,15 @@ def accept_invitation(
             )
 
             if team_owner:
-                notification = Notification(
-                    user_id=team_owner.user_id,
-                    type=NotificationType.TEAM_INVITATION,
-                    reference_id=invitation.team_id,
-                    title="Invitation Accepted",
-                    message=f"{current_user.full_name} ({current_user.email}) has accepted the invitation to join the team as {invitation.role}.",
-                    is_read=False,
+                notification_service.notify_invitation_accepted(
+                    db=db,
+                    team_id=invitation.team_id,
+                    acceptor_name=current_user.full_name,
+                    acceptor_email=current_user.email,
+                    role=invitation.role,
+                    owner_user_id=team_owner.user_id,
+                    commit=False,
                 )
-                db.add(notification)
 
             db.commit()
 
@@ -191,15 +191,15 @@ def accept_invitation(
     )
 
     if team_owner:
-        notification = Notification(
-            user_id=team_owner.user_id,
-            type=NotificationType.TEAM_INVITATION,
-            reference_id=invitation.team_id,
-            title="New Team Member",
-            message=f"{current_user.full_name} ({current_user.email}) has joined the team as {invitation.role}.",
-            is_read=False,
+        notification_service.notify_invitation_accepted(
+            db=db,
+            team_id=invitation.team_id,
+            acceptor_name=current_user.full_name,
+            acceptor_email=current_user.email,
+            role=invitation.role,
+            owner_user_id=team_owner.user_id,
+            commit=False,
         )
-        db.add(notification)
 
     db.commit()
 
