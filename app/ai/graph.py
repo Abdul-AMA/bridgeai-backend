@@ -43,40 +43,33 @@ def create_graph():
     graph.set_entry_point("clarification")
 
     # ----------------------------
-    # CONDITIONAL ROUTING LOGIC
+    # CLARIFICATION -> TEMPLATE FILLER or END
     # ----------------------------
+    def route_after_clarification(state: AgentState):
+        """
+        Route after clarification:
+        - If needs_clarification is True → END (return questions to client)
+        - If intent is not 'requirement' → END (echo or greeting)
+        - Otherwise → END (template filler now runs in background)
+        """
+        needs_clarification = state.get("needs_clarification", False)
+        intent = state.get("intent", "requirement")
+        
+        # Always route to END - background CRS generation handles template filling
+        # This prevents output conflicts and allows real-time updates
+        return END
+
     graph.add_conditional_edges(
         "clarification",
-        should_request_clarification,  # function returns: True or False
+        route_after_clarification,
         {
-            True: END,  # If clarification needed → stop workflow
-            False: "template_filler",  # Otherwise continue to template filler
-        },
+            END: END,
+        }
     )
 
-    # ----------------------------
-    # TEMPLATE FILLER → MEMORY
-    # ----------------------------
-    graph.add_edge("template_filler", "memory")
+    # Note: Template filler and memory nodes are no longer part of the main graph.
+    # CRS generation now runs in background via BackgroundCRSGenerator service.
+    # The graph only handles clarification and conversational responses.
 
-    # ----------------------------
-    # MEMORY → SUGGESTIONS (conditional)
-    # ----------------------------
-    graph.add_conditional_edges(
-        "memory",
-        should_generate_suggestions,
-        {
-            True: "suggestions",  # Generate creative suggestions
-            False: END,  # Skip suggestions and end
-        },
-    )
-
-    # ----------------------------
-    # SUGGESTIONS → END
-    # ----------------------------
-    graph.add_edge("suggestions", END)
-
-    # ----------------------------
-    # COMPILE GRAPH
-    # ----------------------------
+    # Return compiled graph
     return graph.compile()

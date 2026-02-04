@@ -3,10 +3,10 @@ LLM Factory - Centralized LLM instance creation
 
 This factory provides a single point of configuration for all AI models used in the application.
 
-IMPORTANT: This system uses CLAUDE (Anthropic) EXCLUSIVELY for all AI operations.
+IMPORTANT: This system uses ANTHROPIC EXCLUSIVELY for all AI operations.
 All LLM instances are created using ChatAnthropic from langchain-anthropic.
 
-Provider: Anthropic (https://console.anthropic.com)
+Provider: Anthropic (https://anthropic.com)
 Integration: langchain-anthropic
 """
 import logging
@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 
 class LLMFactory:
     """
-    Factory class for creating Claude LLM instances with centralized configuration.
+    Factory class for creating Anthropic LLM instances with centralized configuration.
 
-    This factory uses CLAUDE (Anthropic) EXCLUSIVELY - all models are Claude models accessed via the Anthropic API.
+    This factory uses ANTHROPIC EXCLUSIVELY - all models are accessed via the Anthropic API.
     Supports different models for different components while maintaining consistency.
 
     All instances are ChatAnthropic objects from langchain-anthropic.

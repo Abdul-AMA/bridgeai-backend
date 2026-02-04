@@ -1,5 +1,5 @@
 """
-Clarification Node using Groq LLM for requirement ambiguity detection.
+Clarification Node using Anthropic LLM for requirement ambiguity detection.
 Integrates memory search to provide context from previous interactions.
 """
 
@@ -46,7 +46,7 @@ def clarification_node(state: AgentState) -> Dict[str, Any]:
             # Gracefully handle memory lookup failures
             context["relevant_memories"] = []
 
-    # Run Groq-powered ambiguity detection
+    # Run Anthropic-powered ambiguity detection
     detector = LLMAmbiguityDetector()
     result = detector.analyze_and_generate_questions(user_input, context)
 

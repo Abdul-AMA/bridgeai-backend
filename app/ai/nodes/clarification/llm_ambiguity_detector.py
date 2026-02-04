@@ -22,7 +22,7 @@ class Ambiguity:
 
 class LLMAmbiguityDetector:
     """
-    Pure LLM-powered ambiguity detector using Groq LLM.
+    Pure LLM-powered ambiguity detector using Anthropic LLM.
     No rules, no regex — dynamic, semantic analysis only.
     """
 
@@ -112,16 +112,15 @@ Return pure JSON now:
 
     def __init__(self):
         """
-        Initialize the ambiguity detector with Groq LLM.
+        Initialize the ambiguity detector with Anthropic LLM.
         
         Model configuration is now centralized in app.core.config.
         To change the model, update the LLM_CLARIFICATION_MODEL setting in your .env file.
         
         Available models:
-        - llama-3.3-70b-versatile (recommended for structured output)
-        - llama-3.1-8b-instant (faster but less capable)
-        - mixtral-8x7b-32768 (good alternative)
-        - gemma2-9b-it (smaller, faster)
+        - claude-3-5-sonnet-20240620 (recommended for reasoning & structured output)
+        - claude-3-haiku-20240307 (faster but less capable)
+        - claude-3-opus-20240229 (most powerful)
         """
         # Use centralized LLM factory
         self.llm = get_clarification_llm()
@@ -156,7 +155,7 @@ Return pure JSON now:
     # LLM Wrapper
     # -----------------------------------
     def _call_llm(self, messages):
-        """Call Groq LLM and return the response content."""
+        """Call Anthropic LLM and return the response content."""
         try:
             return self.llm.invoke(messages).content
         except Exception as e:
@@ -167,7 +166,7 @@ Return pure JSON now:
     # Analysis
     # -----------------------------------
     def analyze(self, user_input: str, context: Dict[str, Any]):
-        """Analyze user input for ambiguities using Groq LLM."""
+        """Analyze user input for ambiguities using Anthropic LLM."""
         try:
             # Format conversation history
             conv_history = context.get("conversation_history", [])

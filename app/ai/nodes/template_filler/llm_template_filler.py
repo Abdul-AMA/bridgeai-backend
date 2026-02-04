@@ -5,13 +5,17 @@ Maps clarified requirements to a structured CRS template.
 
 import json
 import logging
-import os
 import re
-from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, Optional
+from dataclasses import dataclass, field, asdict
+from typing import Any, Dict, List, Optional, Union, AsyncGenerator
 
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_anthropic import ChatAnthropic
+
 from app.ai.llm_factory import get_template_filler_llm
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +96,7 @@ class CRSTemplate:
 
 class LLMTemplateFiller:
     """
-    LLM-powered CRS template filler using Groq LLM.
+    LLM-powered CRS template filler using Anthropic LLM.
     Extracts and maps requirements from conversation to structured CRS format.
     Supports multiple CRS patterns: BABOK, IEEE 830, ISO/IEC/IEEE 29148.
     """
@@ -118,13 +122,14 @@ You MUST use the following terms precisely as defined:
 - **VERIFY**: Use when checking if the product was built correctly (matches requirements).
 - **VALIDATE**: Use when checking if the right product was built (solves the business problem).
 
-CRITICAL INSTRUCTIONS:
-1. DO NOT copy raw conversation text into the output
-2. DO NOT include chat messages or dialogue in any field
-3. SYNTHESIZE information from multiple messages into concise, professional statements
-4. Each requirement should be a clear, specific, actionable item
-5. Focus on BUSINESS VALUE and STAKEHOLDER NEEDS
-6. USE THE DEFINED VOCABULARY TERMS (MUST, NEEDS TO, WANT) CORRECTLY
+CRITICAL INSTRUCTIONS - READ CAREFULLY:
+1. ONLY extract information that was EXPLICITLY STATED by the user in the conversation.
+2. DO NOT infer, assume, or generate any content that wasn't directly mentioned.
+3. If a field or detail wasn't discussed, leave it EMPTY (empty string or empty array).
+4. DO NOT copy raw conversation text - synthesize mentioned points into professional statements.
+5. Focus on BUSINESS VALUE and STAKEHOLDER NEEDS mentioned.
+6. USE THE DEFINED VOCABULARY TERMS (MUST, NEEDS TO, WANT) CORRECTLY.
+7. Hallucinating requirements is strictly forbidden. If the info is vague, return empty fields.
 
 USER'S LATEST INPUT:
 {user_input}
@@ -186,13 +191,14 @@ You MUST use these words precisely. They carry legal weight:
 - **WILL**: Facts / Future Events. Happen outside software control. Example: "The GPS satellite will transmit coordinates."
 - **CAN**: Capability / Possibility (physics/hardware). Example: "The camera sensor can capture 4K video."
 
-CRITICAL INSTRUCTIONS:
-1. DO NOT copy raw conversation text into the output
-2. Focus on TECHNICAL SPECIFICATIONS and DETAILED REQUIREMENTS
-3. Each requirement must be verifiable and testable
-4. Use clear, unambiguous language
-5. Include external interface specifications
-6. STRICTLY FOLLOW THE VOCABULARY RULES (SHALL, SHOULD, MAY, WILL, CAN)
+CRITICAL INSTRUCTIONS - READ CAREFULLY:
+1. ONLY extract information that was EXPLICITLY STATED by the user in the conversation.
+2. DO NOT infer, assume, or generate any content that wasn't directly mentioned.
+3. If a field or detail wasn't discussed, leave it EMPTY (empty string or empty array).
+4. DO NOT copy raw conversation text - synthesize mentioned points into professional technical statements.
+5. Each requirement must be verifiable and testable based on user input.
+6. STRICTLY FOLLOW THE VOCABULARY RULES (SHALL, SHOULD, MAY, WILL, CAN).
+7. Hallucinating technical details is strictly forbidden.
 
 USER'S LATEST INPUT:
 {user_input}
@@ -256,13 +262,14 @@ You MUST use these words precisely. They carry legal weight:
 - **WILL**: Facts / Future Events. Happen outside software control. Example: "The GPS satellite will transmit coordinates."
 - **CAN**: Capability / Possibility (physics/hardware). Example: "The camera sensor can capture 4K video."
 
-CRITICAL INSTRUCTIONS:
-1. DO NOT copy raw conversation text into the output
-2. Focus on OPERATIONAL CONCEPTS and QUALITY ATTRIBUTES
-3. Organize requirements by business process or user goal
-4. Ensure verifiable and traceable requirements
-5. Use clear, unambiguous, concise language
-6. STRICTLY FOLLOW THE VOCABULARY RULES (SHALL, SHOULD, MAY, WILL, CAN)
+CRITICAL INSTRUCTIONS - READ CAREFULLY:
+1. ONLY extract information that was EXPLICITLY STATED by the user in the conversation.
+2. DO NOT infer, assume, or generate any content that wasn't directly mentioned.
+3. If a field or detail wasn't discussed, leave it EMPTY (empty string or empty array).
+4. DO NOT copy raw conversation text - synthesize mentioned points into professional systems engineering statements.
+5. Ensure verifiable and traceable requirements based on user goals.
+6. STRICTLY FOLLOW THE VOCABULARY RULES (SHALL, SHOULD, MAY, WILL, CAN).
+7. Hallucinating operational concepts or attributes is strictly forbidden.
 
 USER'S LATEST INPUT:
 {user_input}
@@ -328,12 +335,13 @@ You MUST use Gherkin Syntax for Acceptance Criteria:
 - **When**: The user action
 - **Then**: The expected result
 
-CRITICAL INSTRUCTIONS:
-1. Do NOT use phrases like "The system shall"
-2. Focus on USER CAPABILITIES and BUSINESS VALUE
-3. Break down large requirements into smaller User Stories
-4. Every Functional Requirement MUST be formatted as a User Story
-5. Include GHERKIN syntax in acceptance criteria
+CRITICAL INSTRUCTIONS - READ CAREFULLY:
+1. ONLY extract information that was EXPLICITLY STATED by the user in the conversation.
+2. DO NOT infer, assume, or generate any content that wasn't directly mentioned as a story.
+3. If a story or detail wasn't discussed, leave it EMPTY (empty string or empty array).
+4. Every Functional Requirement MUST be formatted as a User Story (As a... I want to... So that...).
+5. Include GHERKIN syntax in acceptance criteria ONLY if user provided logic for it.
+6. Hallucinating User Stories is strictly forbidden.
 
 USER'S LATEST INPUT:
 {user_input}
@@ -394,6 +402,23 @@ CRITICAL INSTRUCTIONS - READ CAREFULLY:
 6. For functional requirements, ONLY include features the user specifically requested
 7. Project description should summarize what the user said, not what you think the project should be
 
+EXAMPLES OF WHAT NOT TO DO:
+❌ User says: "I want to build a new app"
+   WRONG: Extracting "GDPR compliance", "10,000 concurrent users", "in-app purchases"
+   CORRECT: Leave most fields EMPTY except project_title: "New App Development"
+
+❌ User says: "I need a website"
+   WRONG: Assuming "responsive design", "SEO optimization", "contact form"
+   CORRECT: Only extract "website" as the deliverable, leave requirements EMPTY
+
+❌ User says: "Build an e-commerce platform"
+   WRONG: Adding "payment gateway", "shopping cart", "user authentication" without being told
+   CORRECT: Only extract "e-commerce platform" as title, wait for user to specify features
+
+CRITICAL: If the user provides vague or minimal information (like "I want to build an app"), 
+you should extract ONLY what they said and leave 90% of fields EMPTY. This is EXPECTED and CORRECT behavior.
+Do NOT try to "help" by filling in assumed requirements.
+
 USER'S LATEST INPUT:
 {user_input}
 
@@ -436,7 +461,7 @@ QUALITY STANDARDS - REJECT VAGUE CONTENT:
 - Target users: Minimum 15 words per user type with characteristics
 
 CRITICAL: If the user's information is vague or lacks detail, leave that field EMPTY or mark it as incomplete.
-Do NOT fill fields with generic or assumed content.
+Do NOT fill fields with generic or assumed content. EMPTY FIELDS ARE BETTER THAN HALLUCINATED CONTENT.
 
 Return ONLY a valid JSON object (no markdown, no code blocks):
 {{
@@ -500,12 +525,16 @@ IMPORTANT: Return ONLY a valid JSON object without any markdown formatting.
 Return pure JSON now:
 """
 
+    # Threshold for automatic filling (percentage 0-100)
+    # NOTE: Set to 0 to ensure gradual generation is never blocked.
+    AUTO_FILL_THRESHOLD = 0
+
     def __init__(
         self,
         pattern: str = "babok",
     ):
         """
-        Initialize the template filler with Groq LLM.
+        Initialize the template filler with Anthropic LLM.
         
         Model configuration is now centralized in app.core.config.
         To change the model, update the LLM_TEMPLATE_FILLER_MODEL setting in your .env file.
@@ -556,15 +585,26 @@ Return pure JSON now:
                 f"Could not extract valid JSON from response: {text[:200]}..."
             )
 
+    async def _call_llm_stream(self, messages) -> AsyncGenerator[Dict, None]:
+        """Call Anthropic LLM with streaming and parse partial JSON."""
+        parser = JsonOutputParser()
+        try:
+            chain = self.llm | parser
+            async for partial_json in chain.astream(messages):
+                yield partial_json
+
+        except Exception as e:
+            logger.error(f"LLM streaming failed: {str(e)}")
+            raise
+
     def _call_llm(self, messages) -> str:
-        """Call Groq LLM and return the response content."""
+        """Call Anthropic LLM and return the response content."""
         try:
             response = self.llm.invoke(messages)
             return response.content
         except Exception as e:
             logger.error(f"LLM call failed: {str(e)}")
             raise
-
     def _track_field_sources(
         self, template: CRSTemplate, previous_template: Optional[CRSTemplate] = None
     ) -> Dict[str, str]:
@@ -621,7 +661,7 @@ Return pure JSON now:
                 field_sources[field_name] = "empty"
                 continue
 
-            # Check if this is a new field (wasn't in previous template)
+            # Check if this is a new field or updated (wasn't in previous template)
             is_new_or_updated = True
             if previous_value is not None:
                 if isinstance(current_value, str):
@@ -634,19 +674,22 @@ Return pure JSON now:
                 elif isinstance(current_value, dict):
                     is_new_or_updated = current_value != previous_value
 
-            # Determine source based on quality validation and update status
-            # High quality = likely explicit user input
-            # Low quality = likely LLM inference or weak input
+            # QUALITY METRIC: We still calculate quality for progress tracking,
+            # but it NO LONGER determines the source. 
+            # If the LLM was told NOT to infer, then all output IS user input.
             is_quality = self._validate_field_quality(field_name, current_value)
 
-            # Use both quality and new/updated status to determine source
-            if is_new_or_updated and is_quality:
-                field_sources[field_name] = "explicit_user_input"
-            elif not is_new_or_updated and is_quality:
-                # Content unchanged from previous iteration but still high quality
-                field_sources[field_name] = "explicit_user_input"
+            # Determine source: 
+            # If inference was enabled, use quality to guess.
+            # If inference was DISABLED (default), everything is considered user input.
+            if getattr(self, '_last_allow_inference', False):
+                if is_quality:
+                    field_sources[field_name] = "explicit_user_input"
+                else:
+                    field_sources[field_name] = "llm_inference"
             else:
-                field_sources[field_name] = "llm_inference"
+                # Strictly from user if inference was off
+                field_sources[field_name] = "explicit_user_input"
 
         return field_sources
 
@@ -655,6 +698,7 @@ Return pure JSON now:
         user_input: str,
         conversation_history: list,
         extracted_fields: Dict[str, Any],
+        allow_inference: bool = False,
     ) -> CRSTemplate:
         """
         Extract requirements from conversation and map to CRS template.
@@ -663,6 +707,7 @@ Return pure JSON now:
             user_input: Latest user message
             conversation_history: List of previous messages
             extracted_fields: Previously extracted requirement fields
+            allow_inference: If True, allow LLM to suggest/infer missing information.
 
         Returns:
             CRSTemplate: Populated CRS template
@@ -694,8 +739,15 @@ Return pure JSON now:
                 else "No previously extracted fields"
             )
 
+            # Injection of inference instruction if allowed
+            inference_instr = ""
+            if allow_inference:
+                inference_instr = "\n\n--- AUTO-FILL MODE ENABLED ---\nYou may now intelligently infer or suggest values for missing sections (like technical stack, risks, or stakeholders) that align with the provided context and common industry standards for this type of project."
+
+            formatted_user_input = f"{user_input}{inference_instr}"
+
             messages = self.extraction_prompt.format_messages(
-                user_input=user_input,
+                user_input=formatted_user_input,
                 conversation_history=history_text,
                 extracted_fields=fields_text,
             )
@@ -769,12 +821,81 @@ Return pure JSON now:
                 "overall_summary": f"CRS document for: {crs_template.project_title}",
             }
 
+    def _dict_to_template(self, data: Dict[str, Any]) -> CRSTemplate:
+        """Convert a dictionary to a CRSTemplate object."""
+        return CRSTemplate(
+            project_title=data.get("project_title", ""),
+            project_description=data.get("project_description", ""),
+            project_objectives=data.get("project_objectives", []),
+            target_users=data.get("target_users", []),
+            stakeholders=data.get("stakeholders", []),
+            functional_requirements=data.get("functional_requirements", []),
+            performance_requirements=data.get("performance_requirements", []),
+            security_requirements=data.get("security_requirements", []),
+            scalability_requirements=data.get("scalability_requirements", []),
+            technology_stack=data.get("technology_stack", {}),
+            integrations=data.get("integrations", []),
+            budget_constraints=data.get("budget_constraints", ""),
+            timeline_constraints=data.get("timeline_constraints", ""),
+            technical_constraints=data.get("technical_constraints", []),
+            success_metrics=data.get("success_metrics", []),
+            acceptance_criteria=data.get("acceptance_criteria", []),
+            assumptions=data.get("assumptions", []),
+            risks=data.get("risks", []),
+            out_of_scope=data.get("out_of_scope", []),
+        )
+
+    async def fill_template_stream(
+        self,
+        user_input: str,
+        conversation_history: list = None,
+        extracted_fields: Dict[str, Any] = None,
+        allow_inference: bool = None,
+    ) -> AsyncGenerator[Dict, None]:
+        """
+        Streaming version of fill_template.
+        Yields partial CRS document states as they are generated.
+        """
+        # Determine if inference is allowed
+        actual_allow_inference = allow_inference if allow_inference is not None else False
+        self._last_allow_inference = actual_allow_inference
+
+        # Format prompt
+        # (Same logic as fill_template, but simplified for clarity)
+        history_text = "No previous conversation"
+        if conversation_history:
+            formatted_history = []
+            for msg in conversation_history:
+                if isinstance(msg, dict):
+                    formatted_history.append(f"{msg.get('role', 'user')}: {msg.get('content', '')}")
+                else:
+                    formatted_history.append(str(msg))
+            history_text = "\n".join(formatted_history[-10:])
+
+        fields_text = json.dumps(extracted_fields, indent=2) if extracted_fields else "No previously extracted fields"
+        
+        inference_instr = ""
+        if actual_allow_inference:
+            inference_instr = "\n\n--- AUTO-FILL MODE ENABLED ---\nYou may now intelligently infer or suggest values for missing sections."
+
+        messages = self.extraction_prompt.format_messages(
+            user_input=f"{user_input}{inference_instr}",
+            conversation_history=history_text,
+            extracted_fields=fields_text,
+        )
+
+        async for partial_json in self._call_llm_stream(messages):
+            # We yield the partial JSON directly
+            # The background generator will handle the wrapping/event bus
+            yield partial_json
+
     def fill_template(
         self,
         user_input: str,
         conversation_history: list,
         extracted_fields: Dict[str, Any],
         previous_template: Optional[CRSTemplate] = None,
+        allow_inference: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
         Complete workflow: Extract requirements, fill template, generate summary, track sources.
@@ -784,28 +905,23 @@ Return pure JSON now:
             conversation_history: List of previous messages
             extracted_fields: Previously extracted fields
             previous_template: Previous CRS template for tracking changes
-
-        Returns:
-            Dictionary containing:
-                - crs_template: The populated CRS template as dict
-                - crs_content: JSON string of the CRS
-                - summary_points: List of key points
-                - overall_summary: Executive summary
-                - is_complete: Whether the CRS has sufficient information
-                - completeness_percentage: Progress percentage (0-100)
-                - missing_required_fields: List of missing required fields
-                - missing_optional_fields: List of missing optional fields
-                - filled_optional_count: Count of filled optional fields
-                - weak_fields: Fields with content but low quality
-                - field_sources: Mapping of fields to sources (explicit_user_input/llm_inference/empty)
+            allow_inference: Explicitly allow or disallow inference. 
+                           If None, uses AUTO_FILL_THRESHOLD.
         """
         logger.info(f"Filling CRS template from input: {user_input[:100]}...")
+
+        # Determine if inference is allowed
+        # DEFAULT: False (user requested no auto-fill)
+        # Only allow if explicitly passed as True
+        actual_allow_inference = allow_inference if allow_inference is not None else False
+        self._last_allow_inference = actual_allow_inference
 
         # Extract requirements and fill template
         template = self.extract_requirements(
             user_input=user_input,
             conversation_history=conversation_history,
             extracted_fields=extracted_fields,
+            allow_inference=actual_allow_inference
         )
 
         # Track field sources
@@ -821,6 +937,14 @@ Return pure JSON now:
         completeness_info = self._get_completeness_metadata(
             template, conversation_history
         )
+        completeness_percentage = completeness_info["percentage"]
+
+        # NOTE: Stripping logic removed to allow truly gradual generation
+        # Every piece of extracted information is now immediately visible.
+        summary = self.generate_summary(template)
+        
+        # Check if auto-fill was triggered
+        is_above_threshold = actual_allow_inference
 
         return {
             "crs_template": template.to_dict(),
@@ -828,12 +952,13 @@ Return pure JSON now:
             "summary_points": summary["summary_points"],
             "overall_summary": summary["overall_summary"],
             "is_complete": is_complete,
-            "completeness_percentage": completeness_info["percentage"],
+            "completeness_percentage": completeness_percentage,
             "missing_required_fields": completeness_info["missing_required"],
             "missing_optional_fields": completeness_info["missing_optional"],
             "filled_optional_count": completeness_info["filled_optional_count"],
             "weak_fields": completeness_info["weak_fields"],
             "field_sources": field_sources,
+            "is_auto_filled": is_above_threshold  # Flag for UI if needed
         }
 
     def _has_vague_language(self, text: str) -> bool:
@@ -949,8 +1074,22 @@ Return pure JSON now:
 
         # Get the last AI message
         for message in reversed(conversation_history):
-            if message.get("role") == "assistant":
+            # Handle both string format ("AI: content") and dict format ({"role": "assistant", "content": "..."})
+            if isinstance(message, dict):
+                role = message.get("role", "")
                 content = message.get("content", "")
+            elif isinstance(message, str):
+                # Parse string format "Role: content"
+                if ":" in message:
+                    role_part, content = message.split(":", 1)
+                    role = "assistant" if role_part.strip().lower() in ["ai", "assistant"] else "user"
+                    content = content.strip()
+                else:
+                    continue
+            else:
+                continue
+            
+            if role == "assistant":
                 # Count question marks
                 question_count = content.count("?")
                 # Check for clarification keywords
@@ -1285,31 +1424,59 @@ Return pure JSON now:
             )
             return has_any_content
 
-        # Strict mode: enforce all completeness criteria
-        essential_filled = all(
-            [
-                template.project_title,
-                template.project_description,
-                len(template.functional_requirements) > 0,
-            ]
+        # Strict mode: enforce all completeness criteria with quality checks
+        
+        # Check essential fields exist AND have substantial content
+        has_substantial_title = (
+            template.project_title 
+            and len(template.project_title.strip()) >= 10
+            and template.project_title.lower() not in ["new app", "new app development", "app", "website", "platform"]
         )
+        
+        has_substantial_description = (
+            template.project_description 
+            and len(template.project_description.strip()) >= 100  # Minimum 100 characters
+            and not any(vague in template.project_description.lower() for vague in [
+                "improve customer engagement",
+                "increase revenue", 
+                "user-friendly interface",
+                "seamless experience"
+            ])
+        )
+        
+        # Require at least 3 functional requirements with detailed descriptions
+        has_quality_requirements = (
+            len(template.functional_requirements) >= 3
+            and all(
+                len(req.get("description", "")) >= 30  # Each requirement needs 30+ char description
+                for req in template.functional_requirements
+            )
+        )
+        
+        essential_filled = all([
+            has_substantial_title,
+            has_substantial_description,
+            has_quality_requirements,
+        ])
 
         # Count how many optional fields are filled
         optional_filled = sum(
             [
-                len(template.project_objectives) > 0,
-                len(template.target_users) > 0,
+                len(template.project_objectives) >= 2,  # At least 2 objectives
+                len(template.target_users) >= 1,
                 bool(
                     template.timeline_constraints
                     and template.timeline_constraints != "Not specified"
+                    and len(template.timeline_constraints) >= 40
                 ),
                 bool(
                     template.budget_constraints
                     and template.budget_constraints != "Not specified"
+                    and len(template.budget_constraints) >= 50
                 ),
                 len(template.success_metrics) > 0,
             ]
         )
 
-        # Consider complete if essentials are filled and at least 2 optional fields
-        return essential_filled and optional_filled >= 2
+        # Consider complete if essentials are filled AND at least 3 optional fields
+        return essential_filled and optional_filled >= 3
