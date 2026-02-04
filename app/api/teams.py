@@ -35,6 +35,7 @@ from app.utils.invitation import (
 )
 from app.services.permission_service import PermissionService
 from app.services import notification_service
+from app.services.team_service import TeamService
 
 router = APIRouter()
 
@@ -47,41 +48,12 @@ def create_team(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new team. The creator automatically becomes the owner."""
-    # Check if team name already exists for this user
-    existing_team = (
-        db.query(Team)
-        .filter(Team.name == payload.name, Team.created_by == current_user.id)
-        .first()
+    return TeamService.create_team(
+        db=db,
+        name=payload.name,
+        description=payload.description,
+        current_user=current_user,
     )
-    if existing_team:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You already have a team with this name",
-        )
-
-    # Create the team
-    team = Team(
-        name=payload.name, description=payload.description, created_by=current_user.id
-    )
-    db.add(team)
-    db.commit()
-    db.refresh(team)
-
-    # Add creator as owner
-    team_member = TeamMember(
-        team_id=team.id, user_id=current_user.id, role=TeamRole.owner
-    )
-    db.add(team_member)
-    db.commit()
-
-    # Return team with members
-    team_with_members = (
-        db.query(Team)
-        .options(joinedload(Team.members))
-        .filter(Team.id == team.id)
-        .first()
-    )
-    return team_with_members
 
 
 @router.get("/", response_model=List[TeamListOut])
@@ -93,38 +65,13 @@ def list_teams(
     current_user: User = Depends(get_current_user),
 ):
     """List teams. Users can see teams they are members of."""
-    query = (
-        db.query(Team)
-        .join(TeamMember)
-        .filter(TeamMember.user_id == current_user.id, TeamMember.is_active == True)
+    return TeamService.list_teams(
+        db=db,
+        current_user=current_user,
+        skip=skip,
+        limit=limit,
+        status_filter=status_filter,
     )
-
-    if status_filter:
-        query = query.filter(Team.status == status_filter)
-
-    teams = query.offset(skip).limit(limit).all()
-
-    # Add member count to each team
-    result = []
-    for team in teams:
-        member_count = (
-            db.query(func.count(TeamMember.id))
-            .filter(TeamMember.team_id == team.id, TeamMember.is_active == True)
-            .scalar()
-        )
-
-        team_dict = {
-            "id": team.id,
-            "name": team.name,
-            "description": team.description,
-            "status": team.status,
-            "created_by": team.created_by,
-            "created_at": team.created_at,
-            "member_count": member_count,
-        }
-        result.append(team_dict)
-
-    return result
 
 
 @router.get("/{team_id}", response_model=TeamOut)
@@ -134,35 +81,7 @@ def get_team(
     current_user: User = Depends(get_current_user),
 ):
     """Get team details. Only team members can view team details."""
-    # Check if user is a member of the team
-    team_member = (
-        db.query(TeamMember)
-        .filter(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == current_user.id,
-            TeamMember.is_active == True,
-        )
-        .first()
-    )
-
-    if not team_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. You are not a member of this team.",
-        )
-
-    team = (
-        db.query(Team)
-        .options(joinedload(Team.members))
-        .filter(Team.id == team_id)
-        .first()
-    )
-    if not team:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
-        )
-
-    return team
+    return TeamService.get_team(db=db, team_id=team_id, current_user=current_user)
 
 
 @router.put("/{team_id}", response_model=TeamOut)
@@ -173,46 +92,15 @@ def update_team(
     current_user: User = Depends(get_current_user),
 ):
     """Update team. Only owners and admins can update teams."""
-    # Check if user has permission (owner or admin)
-    PermissionService.verify_team_admin(db, team_id, current_user.id)
-
-    team = PermissionService.get_team_or_404(db, team_id)
-
-    # Validate that only allowed fields are being updated
     update_data = payload.dict(exclude_unset=True)
-
-    # Check if user is trying to update name to one that already exists for them
-    if "name" in update_data and update_data["name"] != team.name:
-        existing_team = (
-            db.query(Team)
-            .filter(
-                Team.name == update_data["name"],
-                Team.created_by == current_user.id,
-                Team.id != team_id,  # Exclude current team
-            )
-            .first()
-        )
-        if existing_team:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="You already have another team with this name",
-            )
-
-    # Update team fields
-    for field, value in update_data.items():
-        setattr(team, field, value)
-
-    db.commit()
-    db.refresh(team)
-
-    # Return team with members
-    team_with_members = (
-        db.query(Team)
-        .options(joinedload(Team.members))
-        .filter(Team.id == team.id)
-        .first()
+    return TeamService.update_team(
+        db=db,
+        team_id=team_id,
+        current_user=current_user,
+        name=update_data.get("name"),
+        description=update_data.get("description"),
+        status_update=update_data.get("status"),
     )
-    return team_with_members
 
 
 @router.delete("/{team_id}")
@@ -252,47 +140,13 @@ def add_team_member(
     current_user: User = Depends(get_current_user),
 ):
     """Add a member to the team. Only owners and admins can add members."""
-    # Check if current user has permission
-    PermissionService.verify_team_admin(db, team_id, current_user.id)
-
-    # Check if team exists
-    team = PermissionService.get_team_or_404(db, team_id)
-
-    # Check if user exists
-    user = db.query(User).filter(User.id == payload.user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
-
-    # Check if user is already a member
-    existing_member = (
-        db.query(TeamMember)
-        .filter(TeamMember.team_id == team_id, TeamMember.user_id == payload.user_id)
-        .first()
+    return TeamService.add_member(
+        db=db,
+        team_id=team_id,
+        user_id=payload.user_id,
+        role=payload.role,
+        current_user=current_user,
     )
-
-    if existing_member:
-        if existing_member.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is already a member of this team",
-            )
-        else:
-            # Reactivate the member
-            existing_member.is_active = True
-            existing_member.role = payload.role
-            db.commit()
-            db.refresh(existing_member)
-            return existing_member
-
-    # Add new member
-    new_member = TeamMember(team_id=team_id, user_id=payload.user_id, role=payload.role)
-    db.add(new_member)
-    db.commit()
-    db.refresh(new_member)
-
-    return new_member
 
 
 @router.get("/{team_id}/members", response_model=List[TeamMemberDetailOut])
@@ -303,29 +157,9 @@ def list_team_members(
     current_user: User = Depends(get_current_user),
 ):
     """List team members. Only team members can view the member list."""
-    # Check if user is a member of the team
-    team_member = (
-        db.query(TeamMember)
-        .filter(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == current_user.id,
-            TeamMember.is_active == True,
-        )
-        .first()
+    return TeamService.list_members(
+        db=db, team_id=team_id, current_user=current_user, include_inactive=include_inactive
     )
-
-    if not team_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. You are not a member of this team.",
-        )
-
-    query = db.query(TeamMember).filter(TeamMember.team_id == team_id)
-    if not include_inactive:
-        query = query.filter(TeamMember.is_active == True)
-
-    members = query.options(joinedload(TeamMember.user)).all()
-    return members
 
 
 @router.put("/{team_id}/members/{member_id}", response_model=TeamMemberDetailOut)
@@ -337,52 +171,15 @@ def update_team_member(
     current_user: User = Depends(get_current_user),
 ):
     """Update team member role or status. Only owners and admins can update members."""
-    # Check if current user has permission
-    current_member = PermissionService.verify_team_admin(db, team_id, current_user.id)
-
-    # Get the member to update
-    member = (
-        db.query(TeamMember)
-        .filter(TeamMember.id == member_id, TeamMember.team_id == team_id)
-        .first()
-    )
-
-    if not member:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Team member not found"
-        )
-
-    # Prevent demoting the last owner
-    if (
-        member.role == TeamRole.owner
-        and payload.role
-        and payload.role != TeamRole.owner
-    ):
-        owner_count = (
-            db.query(func.count(TeamMember.id))
-            .filter(
-                TeamMember.team_id == team_id,
-                TeamMember.role == TeamRole.owner,
-                TeamMember.is_active == True,
-            )
-            .scalar()
-        )
-
-        if owner_count <= 1:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot demote the last owner of the team",
-            )
-
-    # Update member
     update_data = payload.dict(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(member, field, value)
-
-    db.commit()
-    db.refresh(member)
-
-    return member
+    return TeamService.update_member(
+        db=db,
+        team_id=team_id,
+        member_id=member_id,
+        current_user=current_user,
+        role=update_data.get("role"),
+        is_active=update_data.get("is_active"),
+    )
 
 
 @router.delete("/{team_id}/members/{member_id}")
@@ -393,44 +190,9 @@ def remove_team_member(
     current_user: User = Depends(get_current_user),
 ):
     """Remove a member from the team. Only owners and admins can remove members."""
-    # Check if current user has permission
-    current_member = PermissionService.verify_team_admin(db, team_id, current_user.id)
-
-    # Get the member to remove
-    member = (
-        db.query(TeamMember)
-        .filter(TeamMember.id == member_id, TeamMember.team_id == team_id)
-        .first()
+    return TeamService.remove_member(
+        db=db, team_id=team_id, member_id=member_id, current_user=current_user
     )
-
-    if not member:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Team member not found"
-        )
-
-    # Prevent removing the last owner
-    if member.role == TeamRole.owner:
-        owner_count = (
-            db.query(func.count(TeamMember.id))
-            .filter(
-                TeamMember.team_id == team_id,
-                TeamMember.role == TeamRole.owner,
-                TeamMember.is_active == True,
-            )
-            .scalar()
-        )
-
-        if owner_count <= 1:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot remove the last owner of the team",
-            )
-
-    # Soft delete - deactivate the member
-    member.is_active = False
-    db.commit()
-
-    return {"message": "Team member removed successfully"}
 
 
 @router.get("/{team_id}/projects")
@@ -440,38 +202,7 @@ def list_team_projects(
     current_user: User = Depends(get_current_user),
 ):
     """List projects belonging to a team. Only team members can view projects."""
-    # Check if user is a member of the team
-    team_member = (
-        db.query(TeamMember)
-        .filter(
-            TeamMember.team_id == team_id,
-            TeamMember.user_id == current_user.id,
-            TeamMember.is_active == True,
-        )
-        .first()
-    )
-
-    if not team_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. You are not a member of this team.",
-        )
-
-    # Get all projects for this team
-    projects = db.query(Project).filter(Project.team_id == team_id).all()
-
-    return [
-        {
-            "id": project.id,
-            "name": project.name,
-            "description": project.description,
-            "status": project.status,  # Already a string, no need for .value
-            "created_by": project.created_by,
-            "created_at": project.created_at,
-            "updated_at": project.updated_at,
-        }
-        for project in projects
-    ]
+    return TeamService.list_team_projects(db=db, team_id=team_id, current_user=current_user)
 
 
 @router.post("/{team_id}/invite", response_model=InvitationResponse)
@@ -484,88 +215,13 @@ def invite_team_member(
     current_user: User = Depends(get_current_user),
 ):
     """Invite a user to join the team by email. Only owners and admins can invite."""
-    # Check if current user has permission to invite
-    PermissionService.verify_team_admin(db, team_id, current_user.id)
-
-    # Check if team exists
-    team = PermissionService.get_team_or_404(db, team_id)
-
-    # Check if user is already a member
-    existing_user = db.query(User).filter(User.email == payload.email).first()
-    if existing_user:
-        existing_member = (
-            db.query(TeamMember)
-            .filter(
-                TeamMember.team_id == team_id,
-                TeamMember.user_id == existing_user.id,
-                TeamMember.is_active == True,
-            )
-            .first()
-        )
-        if existing_member:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is already a member of this team",
-            )
-
-    # Check if there's already a pending invitation for this email
-    existing_invitation = (
-        db.query(Invitation)
-        .filter(
-            Invitation.team_id == team_id,
-            Invitation.email == payload.email,
-            Invitation.status == "pending",
-        )
-        .first()
-    )
-    if existing_invitation:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="An invitation has already been sent to this email",
-        )
-
-    # Create invitation
-    invitation = create_invitation(
+    return TeamService.invite_member(
         db=db,
         team_id=team_id,
         email=payload.email,
         role=payload.role,
-        invited_by_user_id=current_user.id,
+        current_user=current_user,
     )
-
-    # Build invitation link
-    invite_link = build_invitation_link(invitation.token)
-
-    # Send invitation email via SMTP
-    send_invitation_email_to_console(
-        email=payload.email,
-        invite_link=invite_link,
-        team_name=team.name,
-        inviter_name=(
-            current_user.full_name
-            if hasattr(current_user, "full_name")
-            else current_user.username
-        ),
-    )
-
-    # If the invited email belongs to an existing user, create an in-app notification
-    invited_user = db.query(User).filter(User.email == payload.email).first()
-    if invited_user:
-        notification_service.notify_team_invitation(
-            db=db,
-            team_id=team_id,
-            team_name=team.name,
-            inviter_name=current_user.full_name,
-            role=payload.role,
-            invited_user_id=invited_user.id,
-            commit=True,
-        )
-
-    return {
-        "invite_link": invite_link,
-        "status": invitation.status,
-        "invitation": invitation,
-    }
 
 
 @router.get("/{team_id}/invitations", response_model=List[InvitationOut])
@@ -579,33 +235,9 @@ def list_team_invitations(
     List all invitations for a team.
     Only team owners and admins can view invitations.
     """
-    # Check if current user has permission (owner or admin)
-    PermissionService.verify_team_admin(db, team_id, current_user.id)
-
-    # Check if team exists
-    team = db.query(Team).filter(Team.id == team_id).first()
-    if not team:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
-        )
-
-    # Query invitations
-    query = db.query(Invitation).filter(Invitation.team_id == team_id)
-
-    if not include_expired:
-        # Only show pending invitations by default
-        query = query.filter(Invitation.status == "pending")
-
-    invitations = query.order_by(Invitation.created_at.desc()).all()
-
-    # Update expired invitations
-    for invitation in invitations:
-        if invitation.status == "pending" and invitation.is_expired():
-            invitation.status = "expired"
-
-    db.commit()
-
-    return invitations
+    return TeamService.list_invitations(
+        db=db, team_id=team_id, current_user=current_user, include_expired=include_expired
+    )
 
 
 @router.delete("/{team_id}/invitations/{invitation_id}")
@@ -621,33 +253,9 @@ def cancel_invitation(
     Cancel a pending invitation.
     Only team owners and admins can cancel invitations.
     """
-    # Check if current user has permission (owner or admin)
-    PermissionService.verify_team_admin(db, team_id, current_user.id)
-
-    # Get the invitation
-    invitation = (
-        db.query(Invitation)
-        .filter(Invitation.id == invitation_id, Invitation.team_id == team_id)
-        .first()
+    return TeamService.cancel_invitation(
+        db=db, team_id=team_id, invitation_id=invitation_id, current_user=current_user
     )
-
-    if not invitation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found"
-        )
-
-    # Check if invitation can be canceled
-    if invitation.status != "pending":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot cancel invitation with status: {invitation.status}",
-        )
-
-    # Update invitation status to canceled
-    invitation.status = "canceled"
-    db.commit()
-
-    return {"message": "Invitation canceled successfully"}
 
 
 @router.get("/{team_id}/dashboard/stats", response_model=TeamDashboardStatsOut)
