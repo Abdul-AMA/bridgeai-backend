@@ -48,9 +48,12 @@ def create_project(
     - BA: Creates project directly (auto-approved)
     - Client: Creates project request (pending BA approval)
     """
-    return ProjectService.create_project(
+    project = ProjectService.create_project(
         db, payload.name, payload.description, payload.team_id, current_user
     )
+    db.commit()
+    db.refresh(project)
+    return project
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
@@ -89,9 +92,12 @@ def update_project(
     Update project details (name, description).
     Only the creator or BAs can update.
     """
-    return ProjectService.update_project(
+    project = ProjectService.update_project(
         db, project_id, current_user, payload.name, payload.description, payload.status
     )
+    db.commit()
+    db.refresh(project)
+    return project
 
 
 @router.post("/{project_id}/approve", response_model=ProjectOut)
