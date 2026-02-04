@@ -1,7 +1,7 @@
 """Project repository for database operations."""
 
 from typing import Optional, List, Dict, Any
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_
 
 from app.repositories.base_repository import BaseRepository
@@ -85,6 +85,48 @@ class ProjectRepository(BaseRepository[Project]):
         if status:
             query = query.filter(Project.status == status)
         return query.all()
+
+    def get_by_team(self, team_id: int) -> List[Project]:
+        """
+        Get all projects for a team (alias for get_team_projects).
+
+        Args:
+            team_id: Team ID
+
+        Returns:
+            List of projects
+        """
+        return self.get_team_projects(team_id)
+
+    def get_pending_with_details(self, team_ids: List[int]) -> List[Project]:
+        """
+        Get pending projects with creator and team details eagerly loaded.
+
+        Args:
+            team_ids: List of team IDs to filter by
+
+        Returns:
+            List of pending projects
+        """
+        return (
+            self.db.query(Project)
+            .options(
+                joinedload(Project.creator),
+                joinedload(Project.team),
+            )
+            .filter(Project.team_id.in_(team_ids), Project.status == "pending")
+            .order_by(Project.created_at.desc())
+            .all()
+        )
+
+    def query(self):
+        """
+        Get a base query for Project model.
+
+        Returns:
+            SQLAlchemy query object
+        """
+        return self.db.query(Project)
 
     def get_team_project_status_counts(self, team_id: int) -> Dict[str, int]:
         """

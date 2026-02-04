@@ -49,6 +49,23 @@ class OTPRepository(BaseRepository[UserOTP]):
             .first()
         )
 
+    def get_by_email_and_code(self, email: str, otp_code: str) -> Optional[UserOTP]:
+        """
+        Get OTP by email and OTP code (alias for get_by_email_and_otp).
+
+        Args:
+            email: User email
+            otp_code: OTP code
+
+        Returns:
+            OTP or None if not found
+        """
+        return (
+            self.db.query(UserOTP)
+            .filter(UserOTP.email == email, UserOTP.otp_code == otp_code)
+            .first()
+        )
+
     def delete_by_email(self, email: str) -> None:
         """
         Delete all OTP entries for an email.

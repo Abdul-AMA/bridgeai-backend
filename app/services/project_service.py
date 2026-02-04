@@ -18,6 +18,14 @@ from app.models.crs import CRSDocument
 from app.models.ai_memory_index import AIMemoryIndex
 from app.services.permission_service import PermissionService
 from app.services import notification_service
+from app.repositories import (
+    ProjectRepository,
+    TeamMemberRepository,
+    UserRepository,
+    SessionRepository,
+    CRSRepository,
+    AIMemoryIndexRepository,
+)
 
 
 class ProjectService:
@@ -37,16 +45,8 @@ class ProjectService:
         team_ids = PermissionService.get_user_team_ids(db, current_user.id)
 
         # Query pending projects with eager loading to prevent N+1 queries
-        pending_projects = (
-            db.query(Project)
-            .options(
-                joinedload(Project.creator),
-                joinedload(Project.team),
-            )
-            .filter(Project.team_id.in_(team_ids), Project.status == "pending")
-            .order_by(Project.created_at.desc())
-            .all()
-        )
+        project_repo = ProjectRepository(db)
+        pending_projects = project_repo.get_pending_with_details(team_ids)
 
         # Enrich with creator information
         result = []
@@ -101,19 +101,18 @@ class ProjectService:
             approved_at = None
 
         # Create project
-        project = Project(
-            name=name,
-            description=description,
-            team_id=team_id,
-            created_by=current_user.id,
-            status=status_value,
-            approved_by=approved_by,
-            approved_at=approved_at,
+        project_repo = ProjectRepository(db)
+        project = project_repo.create(
+            Project(
+                name=name,
+                description=description,
+                team_id=team_id,
+                created_by=current_user.id,
+                status=status_value,
+                approved_by=approved_by,
+                approved_at=approved_at,
+            )
         )
-
-        db.add(project)
-        db.commit()
-        db.refresh(project)
 
         # If client creates pending project, notify BAs in the team
         if status_value == "pending":
@@ -125,16 +124,8 @@ class ProjectService:
     def _notify_bas_of_pending_project(db: Session, project: Project, creator: User):
         """Notify all BAs in the team about a new pending project."""
         # Get all BA members of the team
-        ba_members = (
-            db.query(TeamMember)
-            .join(User)
-            .filter(
-                TeamMember.team_id == project.team_id,
-                TeamMember.is_active == True,
-                User.role == UserRole.ba,
-            )
-            .all()
-        )
+        team_member_repo = TeamMemberRepository(db)
+        ba_members = team_member_repo.get_ba_members(project.team_id)
 
         # Create notifications for all BAs
         ba_user_ids = [ba_member.user_id for ba_member in ba_members]
@@ -165,7 +156,8 @@ class ProjectService:
         - BA: Can see all projects in their teams
         - Client: Can see approved projects + their own pending requests
         """
-        query = db.query(Project)
+        project_repo = ProjectRepository(db)
+        query = project_repo.query()
 
         # Filter by specific team or all user's teams
         if team_id:

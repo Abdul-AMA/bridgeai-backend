@@ -1,11 +1,11 @@
 """Team repository for database operations."""
 
 from typing import Optional, List
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 
 from app.repositories.base_repository import BaseRepository
-from app.models.team import Team, TeamMember, TeamRole
+from app.models.team import Team, TeamMember, TeamRole, TeamStatus
 from app.models.invitation import Invitation
 from app.models.project import Project
 
@@ -53,6 +53,94 @@ class TeamRepository(BaseRepository[Team]):
             .join(TeamMember)
             .filter(TeamMember.user_id == user_id)
             .all()
+        )
+
+    def get_user_teams(
+        self,
+        user_id: int,
+        skip: int = 0,
+        limit: int = 100,
+        status_filter: Optional[TeamStatus] = None,
+    ) -> List[Team]:
+        """
+        Get all teams a user is a member of with pagination and filtering.
+
+        Args:
+            user_id: User ID
+            skip: Number of records to skip
+            limit: Maximum number of records to return
+            status_filter: Optional status filter
+
+        Returns:
+            List of teams
+        """
+        query = (
+            self.db.query(Team)
+            .join(TeamMember)
+            .filter(TeamMember.user_id == user_id, TeamMember.is_active == True)
+        )
+        if status_filter:
+            query = query.filter(Team.status == status_filter)
+        return query.offset(skip).limit(limit).all()
+
+    def get_by_name_and_creator(
+        self, name: str, created_by: int
+    ) -> Optional[Team]:
+        """
+        Get team by name and creator.
+
+        Args:
+            name: Team name
+            created_by: Creator user ID
+
+        Returns:
+            Team or None if not found
+        """
+        return (
+            self.db.query(Team)
+            .filter(Team.name == name, Team.created_by == created_by)
+            .first()
+        )
+
+    def get_by_name_and_creator_excluding(
+        self, name: str, created_by: int, exclude_id: int
+    ) -> Optional[Team]:
+        """
+        Get team by name and creator, excluding a specific team ID.
+
+        Args:
+            name: Team name
+            created_by: Creator user ID
+            exclude_id: Team ID to exclude
+
+        Returns:
+            Team or None if not found
+        """
+        return (
+            self.db.query(Team)
+            .filter(
+                Team.name == name,
+                Team.created_by == created_by,
+                Team.id != exclude_id,
+            )
+            .first()
+        )
+
+    def get_with_members(self, team_id: int) -> Optional[Team]:
+        """
+        Get team with members eagerly loaded.
+
+        Args:
+            team_id: Team ID
+
+        Returns:
+            Team with members or None if not found
+        """
+        return (
+            self.db.query(Team)
+            .options(joinedload(Team.members))
+            .filter(Team.id == team_id)
+            .first()
         )
 
     def get_user_team_ids(self, user_id: int) -> List[int]:
@@ -232,6 +320,83 @@ class TeamMemberRepository(BaseRepository[TeamMember]):
         if exclude_user_id:
             query = query.filter(TeamMember.user_id != exclude_user_id)
         return query.scalar()
+
+    def get_active_member_count(self, team_id: int) -> int:
+        """
+        Count active members in a team.
+
+        Args:
+            team_id: Team ID
+
+        Returns:
+            Number of active members
+        """
+        return (
+            self.db.query(func.count(TeamMember.id))
+            .filter(TeamMember.team_id == team_id, TeamMember.is_active == True)
+            .scalar()
+        )
+
+    def count_active_owners(self, team_id: int) -> int:
+        """
+        Count active owners in a team.
+
+        Args:
+            team_id: Team ID
+
+        Returns:
+            Number of active owners
+        """
+        return (
+            self.db.query(func.count(TeamMember.id))
+            .filter(
+                TeamMember.team_id == team_id,
+                TeamMember.role == TeamRole.owner,
+                TeamMember.is_active == True,
+            )
+            .scalar()
+        )
+
+    def get_team_members_with_users(
+        self, team_id: int, include_inactive: bool = False
+    ) -> List[TeamMember]:
+        """
+        Get team members with user data eagerly loaded.
+
+        Args:
+            team_id: Team ID
+            include_inactive: Whether to include inactive members
+
+        Returns:
+            List of team members with users
+        """
+        query = self.db.query(TeamMember).filter(TeamMember.team_id == team_id)
+        if not include_inactive:
+            query = query.filter(TeamMember.is_active == True)
+        return query.options(joinedload(TeamMember.user)).all()
+
+    def get_ba_members(self, team_id: int) -> List[TeamMember]:
+        """
+        Get all active BA members of a team.
+
+        Args:
+            team_id: Team ID
+
+        Returns:
+            List of BA team members
+        """
+        from app.models.user import User, UserRole
+        
+        return (
+            self.db.query(TeamMember)
+            .join(User)
+            .filter(
+                TeamMember.team_id == team_id,
+                TeamMember.is_active == True,
+                User.role == UserRole.ba,
+            )
+            .all()
+        )
 
     def delete_by_team_and_user(self, team_id: int, user_id: int) -> None:
         """

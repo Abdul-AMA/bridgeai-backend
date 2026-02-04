@@ -21,6 +21,12 @@ from app.core.security import create_access_token
 from app.utils.hash import hash_password, verify_password
 from app.utils.email import send_password_reset_email
 from app.services import notification_service
+from app.repositories import (
+    UserRepository,
+    InvitationRepository,
+    TeamRepository,
+    OTPRepository,
+)
 
 
 class AuthService:
@@ -50,37 +56,31 @@ class AuthService:
                 )
 
             # Check if user exists
-            user = (
-                db.query(User)
-                .filter((User.email == email) | (User.google_id == google_id))
-                .first()
-            )
+            user_repo = UserRepository(db)
+            user = user_repo.get_by_email_or_google_id(email, google_id)
 
             if not user:
                 # Create new user
-                user = User(
-                    full_name=name,
-                    email=email,
-                    google_id=google_id,
-                    avatar_url=picture,
-                    role=role,
-                    password_hash=None,  # No password for Google users
+                user = user_repo.create(
+                    User(
+                        full_name=name,
+                        email=email,
+                        google_id=google_id,
+                        avatar_url=picture,
+                        role=role,
+                        password_hash=None,  # No password for Google users
+                    )
                 )
-                db.add(user)
-                db.commit()
-                db.refresh(user)
             else:
                 # Update existing user if needed
                 if not user.google_id:
                     user.google_id = google_id
-                    db.add(user)
 
                 # Update avatar if changed
                 if picture and user.avatar_url != picture:
                     user.avatar_url = picture
-                    db.add(user)
 
-                db.commit()
+                user_repo.update(user)
 
             # Create access token
             user_role = user.role if user.role is not None else UserRole.client
@@ -106,20 +106,20 @@ class AuthService:
         Creates notifications for any pending team invitations.
         """
         # Check if email already registered
-        existing = db.query(User).filter(User.email == email).first()
+        user_repo = UserRepository(db)
+        existing = user_repo.get_by_email(email)
         if existing:
             raise HTTPException(status_code=400, detail="Email already registered")
 
         # Create user
-        user = User(
-            full_name=full_name,
-            email=email,
-            password_hash=hash_password(password),
-            role=role,
+        user = user_repo.create(
+            User(
+                full_name=full_name,
+                email=email,
+                password_hash=hash_password(password),
+                role=role,
+            )
         )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
 
         # Check for pending invitations and create notifications
         AuthService._create_invitation_notifications(db, user)
@@ -129,15 +129,13 @@ class AuthService:
     @staticmethod
     def _create_invitation_notifications(db: Session, user: User):
         """Create notifications for any pending team invitations for this user."""
-        pending_invitations = (
-            db.query(Invitation)
-            .filter(Invitation.email == user.email, Invitation.status == "pending")
-            .all()
-        )
+        invitation_repo = InvitationRepository(db)
+        pending_invitations = invitation_repo.get_user_invitations(user.email, status="pending")
 
+        team_repo = TeamRepository(db)
         for invitation in pending_invitations:
             # Get team details for the notification message
-            team = db.query(Team).filter(Team.id == invitation.team_id).first()
+            team = team_repo.get_by_id(invitation.team_id)
             if team and invitation.inviter:
                 notification_service.notify_team_invitation(
                     db=db,
@@ -157,7 +155,8 @@ class AuthService:
         Authenticate user with email and password.
         Returns access token and user role.
         """
-        user = db.query(User).filter(User.email == email).first()
+        user_repo = UserRepository(db)
+        user = user_repo.get_by_email(email)
         if not user or not verify_password(password, user.password_hash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
@@ -176,7 +175,8 @@ class AuthService:
     @staticmethod
     def get_user_by_id(db: Session, user_id: int) -> User:
         """Get user by ID."""
-        user = db.query(User).filter(User.id == user_id).first()
+        user_repo = UserRepository(db)
+        user = user_repo.get_by_id(user_id)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
@@ -190,7 +190,8 @@ class AuthService:
         Returns success message.
         """
         # Check if user exists
-        user = db.query(User).filter(User.email == email).first()
+        user_repo = UserRepository(db)
+        user = user_repo.get_by_email(email)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -202,11 +203,11 @@ class AuthService:
         expires_at = datetime.utcnow() + timedelta(minutes=15)
 
         # Store in DB (delete old ones first)
-        db.query(UserOTP).filter(UserOTP.email == email).delete()
+        otp_repo = OTPRepository(db)
+        otp_repo.delete_by_email(email)
 
         db_otp = UserOTP(email=email, otp_code=otp_code, expires_at=expires_at)
-        db.add(db_otp)
-        db.commit()
+        otp_repo.create(db_otp)
 
         # Send email
         send_password_reset_email(email, otp_code)
@@ -219,11 +220,8 @@ class AuthService:
         Step 2 of password reset: Verify the OTP code.
         Returns success message.
         """
-        db_otp = (
-            db.query(UserOTP)
-            .filter(UserOTP.email == email, UserOTP.otp_code == otp_code)
-            .first()
-        )
+        otp_repo = OTPRepository(db)
+        db_otp = otp_repo.get_by_email_and_code(email, otp_code)
 
         if not db_otp:
             raise HTTPException(
@@ -232,8 +230,7 @@ class AuthService:
             )
 
         if db_otp.is_expired:
-            db.delete(db_otp)
-            db.commit()
+            otp_repo.delete(db_otp)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Verification code has expired.",
@@ -250,11 +247,8 @@ class AuthService:
         Returns success message.
         """
         # Verify OTP again (stateless verification for the final step)
-        db_otp = (
-            db.query(UserOTP)
-            .filter(UserOTP.email == email, UserOTP.otp_code == otp_code)
-            .first()
-        )
+        otp_repo = OTPRepository(db)
+        db_otp = otp_repo.get_by_email_and_code(email, otp_code)
 
         if not db_otp or db_otp.is_expired:
             raise HTTPException(
@@ -263,7 +257,8 @@ class AuthService:
             )
 
         # Get User
-        user = db.query(User).filter(User.email == email).first()
+        user_repo = UserRepository(db)
+        user = user_repo.get_by_email(email)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="User not found."
@@ -273,9 +268,9 @@ class AuthService:
         user.password_hash = hash_password(new_password)
 
         # Clean up OTP
-        db.delete(db_otp)
+        otp_repo.delete(db_otp)
 
-        db.commit()
+        user_repo.update(user)
 
         return {"message": "Password reset successfully. You can now log in."}
 

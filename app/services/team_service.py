@@ -15,6 +15,13 @@ from app.models.project import Project
 from app.models.invitation import Invitation
 from app.services.permission_service import PermissionService
 from app.services import notification_service
+from app.repositories import (
+    TeamRepository,
+    TeamMemberRepository,
+    UserRepository,
+    ProjectRepository,
+    InvitationRepository,
+)
 from app.utils.invitation import (
     build_invitation_link,
     create_invitation,
@@ -30,12 +37,11 @@ class TeamService:
         db: Session, name: str, description: str, current_user: User
     ) -> Team:
         """Create a new team. The creator automatically becomes the owner."""
+        team_repo = TeamRepository(db)
+        team_member_repo = TeamMemberRepository(db)
+        
         # Check if team name already exists for this user
-        existing_team = (
-            db.query(Team)
-            .filter(Team.name == name, Team.created_by == current_user.id)
-            .first()
-        )
+        existing_team = team_repo.get_by_name_and_creator(name, current_user.id)
         if existing_team:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -43,26 +49,19 @@ class TeamService:
             )
 
         # Create the team
-        team = Team(name=name, description=description, created_by=current_user.id)
-        db.add(team)
-        db.commit()
-        db.refresh(team)
+        team = team_repo.create(
+            Team(name=name, description=description, created_by=current_user.id)
+        )
 
         # Add creator as owner
-        team_member = TeamMember(
-            team_id=team.id, user_id=current_user.id, role=TeamRole.owner
+        team_member_repo.create(
+            TeamMember(
+                team_id=team.id, user_id=current_user.id, role=TeamRole.owner
+            )
         )
-        db.add(team_member)
-        db.commit()
 
         # Return team with members
-        team_with_members = (
-            db.query(Team)
-            .options(joinedload(Team.members))
-            .filter(Team.id == team.id)
-            .first()
-        )
-        return team_with_members
+        return team_repo.get_with_members(team.id)
 
     @staticmethod
     def list_teams(
@@ -73,26 +72,15 @@ class TeamService:
         status_filter: Optional[TeamStatus] = None,
     ) -> List[Dict[str, Any]]:
         """List teams. Users can see teams they are members of."""
-        query = (
-            db.query(Team)
-            .join(TeamMember)
-            .filter(TeamMember.user_id == current_user.id, TeamMember.is_active == True)
-        )
-
-        if status_filter:
-            query = query.filter(Team.status == status_filter)
-
-        teams = query.offset(skip).limit(limit).all()
+        team_repo = TeamRepository(db)
+        team_member_repo = TeamMemberRepository(db)
+        
+        teams = team_repo.get_user_teams(current_user.id, skip, limit, status_filter)
 
         # Add member count to each team
         result = []
         for team in teams:
-            member_count = (
-                db.query(func.count(TeamMember.id))
-                .filter(TeamMember.team_id == team.id, TeamMember.is_active == True)
-                .scalar()
-            )
-
+            member_count = team_member_repo.get_active_member_count(team.id)
             team_dict = {
                 "id": team.id,
                 "name": team.name,
@@ -109,29 +97,17 @@ class TeamService:
     @staticmethod
     def get_team(db: Session, team_id: int, current_user: User) -> Team:
         """Get team details. Only team members can view team details."""
+        team_member_repo = TeamMemberRepository(db)
         # Check if user is a member of the team
-        team_member = (
-            db.query(TeamMember)
-            .filter(
-                TeamMember.team_id == team_id,
-                TeamMember.user_id == current_user.id,
-                TeamMember.is_active == True,
-            )
-            .first()
-        )
-
-        if not team_member:
+        team_member = team_member_repo.get_by_team_and_user(team_id, current_user.id)
+        if not team_member or not team_member.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied. You are not a member of this team.",
             )
 
-        team = (
-            db.query(Team)
-            .options(joinedload(Team.members))
-            .filter(Team.id == team_id)
-            .first()
-        )
+        team_repo = TeamRepository(db)
+        team = team_repo.get_with_members(team_id)
         if not team:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
@@ -156,14 +132,9 @@ class TeamService:
 
         # Check if user is trying to update name to one that already exists for them
         if name and name != team.name:
-            existing_team = (
-                db.query(Team)
-                .filter(
-                    Team.name == name,
-                    Team.created_by == current_user.id,
-                    Team.id != team_id,  # Exclude current team
-                )
-                .first()
+            team_repo = TeamRepository(db)
+            existing_team = team_repo.get_by_name_and_creator_excluding(
+                name, current_user.id, team_id
             )
             if existing_team:
                 raise HTTPException(
@@ -179,17 +150,11 @@ class TeamService:
         if status_update is not None:
             team.status = status_update
 
-        db.commit()
-        db.refresh(team)
+        team_repo = TeamRepository(db)
+        updated_team = team_repo.update(team)
 
         # Return team with members
-        team_with_members = (
-            db.query(Team)
-            .options(joinedload(Team.members))
-            .filter(Team.id == team.id)
-            .first()
-        )
-        return team_with_members
+        return team_repo.get_with_members(updated_team.id)
 
     @staticmethod
     def add_member(
@@ -203,18 +168,16 @@ class TeamService:
         team = PermissionService.get_team_or_404(db, team_id)
 
         # Check if user exists
-        user = db.query(User).filter(User.id == user_id).first()
+        user_repo = UserRepository(db)
+        user = user_repo.get_by_id(user_id)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
             )
 
         # Check if user is already a member
-        existing_member = (
-            db.query(TeamMember)
-            .filter(TeamMember.team_id == team_id, TeamMember.user_id == user_id)
-            .first()
-        )
+        team_member_repo = TeamMemberRepository(db)
+        existing_member = team_member_repo.get_by_team_and_user(team_id, user_id)
 
         if existing_member:
             if existing_member.is_active:
@@ -226,15 +189,12 @@ class TeamService:
                 # Reactivate the member
                 existing_member.is_active = True
                 existing_member.role = role
-                db.commit()
-                db.refresh(existing_member)
-                return existing_member
+                return team_member_repo.update(existing_member)
 
         # Add new member
-        new_member = TeamMember(team_id=team_id, user_id=user_id, role=role)
-        db.add(new_member)
-        db.commit()
-        db.refresh(new_member)
+        new_member = team_member_repo.create(
+            TeamMember(team_id=team_id, user_id=user_id, role=role)
+        )
 
         return new_member
 
@@ -243,28 +203,18 @@ class TeamService:
         db: Session, team_id: int, current_user: User, include_inactive: bool = False
     ) -> List[TeamMember]:
         """List team members. Only team members can view the member list."""
+        team_member_repo = TeamMemberRepository(db)
         # Check if user is a member of the team
-        team_member = (
-            db.query(TeamMember)
-            .filter(
-                TeamMember.team_id == team_id,
-                TeamMember.user_id == current_user.id,
-                TeamMember.is_active == True,
-            )
-            .first()
-        )
-
-        if not team_member:
+        team_member = team_member_repo.get_by_team_and_user(team_id, current_user.id)
+        if not team_member or not team_member.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied. You are not a member of this team.",
             )
 
-        query = db.query(TeamMember).filter(TeamMember.team_id == team_id)
-        if not include_inactive:
-            query = query.filter(TeamMember.is_active == True)
-
-        members = query.options(joinedload(TeamMember.user)).all()
+        members = team_member_repo.get_team_members_with_users(
+            team_id, include_inactive
+        )
         return members
 
     @staticmethod
@@ -281,28 +231,16 @@ class TeamService:
         current_member = PermissionService.verify_team_admin(db, team_id, current_user.id)
 
         # Get the member to update
-        member = (
-            db.query(TeamMember)
-            .filter(TeamMember.id == member_id, TeamMember.team_id == team_id)
-            .first()
-        )
-
-        if not member:
+        team_member_repo = TeamMemberRepository(db)
+        member = team_member_repo.get_by_id(member_id)
+        if not member or member.team_id != team_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Team member not found"
             )
 
         # Prevent demoting the last owner
         if member.role == TeamRole.owner and role and role != TeamRole.owner:
-            owner_count = (
-                db.query(func.count(TeamMember.id))
-                .filter(
-                    TeamMember.team_id == team_id,
-                    TeamMember.role == TeamRole.owner,
-                    TeamMember.is_active == True,
-                )
-                .scalar()
-            )
+            owner_count = team_member_repo.count_active_owners(team_id)
 
             if owner_count <= 1:
                 raise HTTPException(
@@ -316,10 +254,7 @@ class TeamService:
         if is_active is not None:
             member.is_active = is_active
 
-        db.commit()
-        db.refresh(member)
-
-        return member
+        return team_member_repo.update(member)
 
     @staticmethod
     def remove_member(
@@ -330,28 +265,16 @@ class TeamService:
         current_member = PermissionService.verify_team_admin(db, team_id, current_user.id)
 
         # Get the member to remove
-        member = (
-            db.query(TeamMember)
-            .filter(TeamMember.id == member_id, TeamMember.team_id == team_id)
-            .first()
-        )
-
-        if not member:
+        team_member_repo = TeamMemberRepository(db)
+        member = team_member_repo.get_by_id(member_id)
+        if not member or member.team_id != team_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Team member not found"
             )
 
         # Prevent removing the last owner
         if member.role == TeamRole.owner:
-            owner_count = (
-                db.query(func.count(TeamMember.id))
-                .filter(
-                    TeamMember.team_id == team_id,
-                    TeamMember.role == TeamRole.owner,
-                    TeamMember.is_active == True,
-                )
-                .scalar()
-            )
+            owner_count = team_member_repo.count_active_owners(team_id)
 
             if owner_count <= 1:
                 raise HTTPException(
@@ -361,7 +284,7 @@ class TeamService:
 
         # Mark member as inactive instead of deleting
         member.is_active = False
-        db.commit()
+        team_member_repo.update(member)
 
         return {"message": "Team member removed successfully"}
 
@@ -370,25 +293,18 @@ class TeamService:
         db: Session, team_id: int, current_user: User
     ) -> List[Dict[str, Any]]:
         """List projects belonging to a team. Only team members can view projects."""
+        team_member_repo = TeamMemberRepository(db)
         # Check if user is a member of the team
-        team_member = (
-            db.query(TeamMember)
-            .filter(
-                TeamMember.team_id == team_id,
-                TeamMember.user_id == current_user.id,
-                TeamMember.is_active == True,
-            )
-            .first()
-        )
-
-        if not team_member:
+        team_member = team_member_repo.get_by_team_and_user(team_id, current_user.id)
+        if not team_member or not team_member.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied. You are not a member of this team.",
             )
 
         # Get all projects for this team
-        projects = db.query(Project).filter(Project.team_id == team_id).all()
+        project_repo = ProjectRepository(db)
+        projects = project_repo.get_by_team(team_id)
 
         return [
             {
@@ -415,32 +331,23 @@ class TeamService:
         team = PermissionService.get_team_or_404(db, team_id)
 
         # Check if user is already a member
-        existing_user = db.query(User).filter(User.email == email).first()
+        user_repo = UserRepository(db)
+        existing_user = user_repo.get_by_email(email)
         if existing_user:
-            existing_member = (
-                db.query(TeamMember)
-                .filter(
-                    TeamMember.team_id == team_id,
-                    TeamMember.user_id == existing_user.id,
-                    TeamMember.is_active == True,
-                )
-                .first()
+            team_member_repo = TeamMemberRepository(db)
+            existing_member = team_member_repo.get_by_team_and_user(
+                team_id, existing_user.id
             )
-            if existing_member:
+            if existing_member and existing_member.is_active:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="User is already a member of this team",
                 )
 
         # Check if there's already a pending invitation for this email
-        existing_invitation = (
-            db.query(Invitation)
-            .filter(
-                Invitation.team_id == team_id,
-                Invitation.email == email,
-                Invitation.status == "pending",
-            )
-            .first()
+        invitation_repo = InvitationRepository(db)
+        existing_invitation = invitation_repo.get_by_team_and_email(
+            team_id, email, status="pending"
         )
         if existing_invitation:
             raise HTTPException(
@@ -473,7 +380,8 @@ class TeamService:
         )
 
         # If the invited email belongs to an existing user, create an in-app notification
-        invited_user = db.query(User).filter(User.email == email).first()
+        user_repo = UserRepository(db)
+        invited_user = user_repo.get_by_email(email)
         if invited_user:
             notification_service.notify_team_invitation(
                 db=db,
@@ -503,20 +411,22 @@ class TeamService:
         PermissionService.verify_team_admin(db, team_id, current_user.id)
 
         # Check if team exists
-        team = db.query(Team).filter(Team.id == team_id).first()
+        team_repo = TeamRepository(db)
+        team = team_repo.get_by_id(team_id)
         if not team:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
             )
 
         # Query invitations
-        query = db.query(Invitation).filter(Invitation.team_id == team_id)
+        invitation_repo = InvitationRepository(db)
+        if include_expired:
+            invitations = invitation_repo.get_team_invitations(team_id)
+        else:
+            invitations = invitation_repo.get_team_invitations(team_id, status="pending")
 
-        if not include_expired:
-            # Only show pending invitations by default
-            query = query.filter(Invitation.status == "pending")
-
-        invitations = query.order_by(Invitation.created_at.desc()).all()
+        # Sort by created_at descending
+        invitations.sort(key=lambda x: x.created_at, reverse=True)
 
         # Update expired invitations
         for invitation in invitations:
@@ -539,13 +449,9 @@ class TeamService:
         PermissionService.verify_team_admin(db, team_id, current_user.id)
 
         # Get the invitation
-        invitation = (
-            db.query(Invitation)
-            .filter(Invitation.id == invitation_id, Invitation.team_id == team_id)
-            .first()
-        )
-
-        if not invitation:
+        invitation_repo = InvitationRepository(db)
+        invitation = invitation_repo.get_by_id(invitation_id)
+        if not invitation or invitation.team_id != team_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found"
             )
@@ -558,6 +464,6 @@ class TeamService:
 
         # Mark as cancelled
         invitation.status = "cancelled"
-        db.commit()
+        invitation_repo.update(invitation)
 
         return {"message": "Invitation cancelled successfully"}
