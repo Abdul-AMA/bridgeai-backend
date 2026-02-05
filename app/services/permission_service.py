@@ -86,7 +86,8 @@ class PermissionService:
         user_id: int,
     ) -> TeamMember:
         """
-        Verify user is a team admin or owner.
+        Verify user is a Business Analyst in the team.
+        In the new model, only BAs can perform admin actions.
 
         Args:
             db: Database session
@@ -97,7 +98,7 @@ class PermissionService:
             TeamMember object if authorized
 
         Raises:
-            HTTPException 403: If user is not an admin or owner
+            HTTPException 403: If user is not a BA in the team
         """
         team_member_repo = TeamMemberRepository(db)
         team_member = team_member_repo.get_by_team_and_user(team_id, user_id)
@@ -105,11 +106,11 @@ class PermissionService:
         if (
             not team_member
             or not team_member.is_active
-            or team_member.role not in [TeamRole.owner, TeamRole.admin]
+            or team_member.role != TeamRole.ba
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied. Only team owners and admins can perform this action.",
+                detail="Access denied. Only Business Analysts can perform this action.",
             )
 
         return team_member
@@ -121,7 +122,8 @@ class PermissionService:
         user_id: int,
     ) -> TeamMember:
         """
-        Verify user is the team owner.
+        Verify user is a Business Analyst in the team.
+        In the new model, BAs have equivalent permissions to what owners had.
 
         Args:
             db: Database session
@@ -132,7 +134,7 @@ class PermissionService:
             TeamMember object if authorized
 
         Raises:
-            HTTPException 403: If user is not the team owner
+            HTTPException 403: If user is not a BA in the team
         """
         team_member_repo = TeamMemberRepository(db)
         team_member = team_member_repo.get_by_team_and_user(team_id, user_id)
@@ -140,11 +142,11 @@ class PermissionService:
         if (
             not team_member
             or not team_member.is_active
-            or team_member.role != TeamRole.owner
+            or team_member.role != TeamRole.ba
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied. Only the team owner can perform this action.",
+                detail="Access denied. Only Business Analysts can perform this action.",
             )
 
         return team_member

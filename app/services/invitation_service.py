@@ -123,6 +123,9 @@ class InvitationService:
         if current_user.email.lower() != invitation.email.lower():
             raise ValueError("This invitation was sent to a different email address")
 
+        # Check current team size - enforce 2-member limit
+        active_member_count = team_member_repo.get_active_member_count(invitation.team_id)
+        
         # Check if user is already a member
         existing_member = team_member_repo.get_by_team_and_user(invitation.team_id, current_user.id)
 
@@ -130,23 +133,34 @@ class InvitationService:
             if existing_member.is_active:
                 raise ValueError("You are already a member of this team")
             else:
-                # Reactivate the member
+                # Check team size before reactivating
+                if active_member_count >= 2:
+                    raise ValueError("Team is at maximum capacity (2 members: Client + BA)")
+                
+                # Reactivate the member with role based on user's role
                 existing_member.is_active = True
-                existing_member.role = TeamRole[invitation.role]
+                # Assign role based on user's role (client or ba)
+                team_role = TeamRole.client if current_user.role.value == "client" else TeamRole.ba
+                existing_member.role = team_role
                 db.commit()
                 repo.update_status(invitation.id, "accepted")
 
                 return InvitationAcceptResponse(
                     message="Invitation accepted and membership reactivated",
                     team_id=invitation.team_id,
-                    role=invitation.role,
+                    role=team_role.value,
                 )
 
-        # Create new team membership
+        # Check team size before creating new member
+        if active_member_count >= 2:
+            raise ValueError("Team is at maximum capacity (2 members: Client + BA)")
+
+        # Create new team membership with role based on user's role
+        team_role = TeamRole.client if current_user.role.value == "client" else TeamRole.ba
         new_member = TeamMember(
             team_id=invitation.team_id,
             user_id=current_user.id,
-            role=TeamRole[invitation.role],
+            role=team_role,
             is_active=True,
         )
         db.add(new_member)
@@ -158,7 +172,7 @@ class InvitationService:
         return InvitationAcceptResponse(
             message="Invitation accepted successfully",
             team_id=invitation.team_id,
-            role=invitation.role,
+            role=team_role.value,
         )
 
     @staticmethod

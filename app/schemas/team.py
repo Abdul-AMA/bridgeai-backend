@@ -7,10 +7,8 @@ from pydantic import BaseModel, Field, root_validator, validator
 
 
 class TeamRole(str, Enum):
-    owner = "owner"
-    admin = "admin"
-    member = "member"
-    viewer = "viewer"
+    client = "client"
+    ba = "ba"
 
 
 class TeamStatus(str, Enum):
@@ -156,7 +154,7 @@ class TeamListOut(BaseModel):
 # Team member schemas
 class TeamMemberCreate(BaseModel):
     user_id: int
-    role: Optional[TeamRole] = TeamRole.member
+    role: Optional[TeamRole] = TeamRole.client
 
 
 class TeamMemberUpdate(BaseModel):
