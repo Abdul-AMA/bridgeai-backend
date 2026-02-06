@@ -74,6 +74,9 @@ class AuthService:
                     )
                 )
                 db.commit()
+
+                # Check for pending invitations and create notifications
+                AuthService._create_invitation_notifications(db, user)
             else:
                 # Update existing user's Google ID and avatar if needed
                 if not user.google_id:
