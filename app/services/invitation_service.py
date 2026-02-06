@@ -184,8 +184,8 @@ class InvitationService:
                 raise ValueError("You are already a member of this team")
             else:
                 # Check team size before reactivating
-                if active_member_count >= 2:
-                    raise ValueError("Team is at maximum capacity (2 members: Client + BA)")
+                # if active_member_count >= 2:
+                #     raise ValueError("Team is at maximum capacity (2 members: Client + BA)")
                 
                 # Reactivate the member with role based on user's role
                 existing_member.is_active = True
@@ -202,8 +202,8 @@ class InvitationService:
                 )
 
         # Check team size before creating new member
-        if active_member_count >= 2:
-            raise ValueError("Team is at maximum capacity (2 members: Client + BA)")
+        # if active_member_count >= 2:
+        #     raise ValueError("Team is at maximum capacity (2 members: Client + BA)")
 
         # Create new team membership with role based on user's role
         team_role = TeamRole.client if current_user.role.value == "client" else TeamRole.ba
