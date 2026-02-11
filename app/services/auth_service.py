@@ -329,7 +329,7 @@ class AuthService:
         otp_repo.delete(db_otp)
 
         user_repo.update(user)
-
+        db.commit()
         return {"message": "Password reset successfully. You can now log in."}
 
     @staticmethod
