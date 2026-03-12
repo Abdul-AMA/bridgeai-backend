@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 def persist_crs_document(
     db: Session,
     *,
-    project_id: int,
+    project_id: Optional[int],
     created_by: int,
     content: str,
     summary_points: Optional[List[str]] = None,
@@ -36,15 +36,18 @@ def persist_crs_document(
     Auto-increments the version number based on existing CRS documents for the project.
     Pattern defaults to 'babok' if not specified.
     initial_status: Optional status to set (defaults to DRAFT)
+    project_id may be None for standalone (lightweight) chats.
     """
     summary_payload = summary_points or []
     summary_as_text = json.dumps(summary_payload)
 
     field_sources_text = json.dumps(field_sources) if field_sources else None
 
-    # Calculate the next version number for this project
-    latest = get_latest_crs(db, project_id=project_id)
-    next_version = (latest.version + 1) if latest else 1
+    # Calculate the next version number (project chats only; standalone always starts at 1)
+    next_version = 1
+    if project_id is not None:
+        latest = get_latest_crs(db, project_id=project_id)
+        next_version = (latest.version + 1) if latest else 1
 
     # Validate and set pattern, default to babok
     try:
@@ -71,7 +74,7 @@ def persist_crs_document(
     db.commit()
     db.refresh(crs)
 
-    if store_embedding:
+    if store_embedding and project_id is not None:
         try:
             create_memory(
                 db=db,
@@ -86,8 +89,11 @@ def persist_crs_document(
     return crs
 
 
-def get_latest_crs(db: Session, *, project_id: int) -> Optional[CRSDocument]:
-    """Return the most recent CRS for a project (highest version number)."""
+def get_latest_crs(db: Session, *, project_id: Optional[int]) -> Optional[CRSDocument]:
+    """Return the most recent CRS for a project (highest version number).
+    Returns None for standalone chats (project_id=None)."""
+    if project_id is None:
+        return None
     crs_repo = CRSRepository(db)
     return crs_repo.get_latest_by_project(project_id)
 

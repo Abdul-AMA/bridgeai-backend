@@ -1,36 +1,112 @@
 """
-LLM Factory - Centralized LLM instance creation
+LLM Factory - Centralized LLM instance creation with multi-provider support.
 
 This factory provides a single point of configuration for all AI models used in the application.
+Supports multiple providers: Anthropic, OpenAI, Google Gemini, Groq, and Mistral.
 
-IMPORTANT: This system uses ANTHROPIC EXCLUSIVELY for all AI operations.
-All LLM instances are created using ChatAnthropic from langchain-anthropic.
-
-Provider: Anthropic (https://anthropic.com)
-Integration: langchain-anthropic
+Provider: Multiple (Anthropic, OpenAI, Google, Groq, Mistral)
+Integration: langchain-anthropic, langchain-openai, langchain-google-genai, langchain-groq, langchain-mistralai
 """
+
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional, Union
 from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
+from langchain_mistralai import ChatMistralAI
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
+class LLMProvider:
+    """Enum-like class for AI providers."""
+
+    ANTHROPIC = "anthropic"
+    OPENAI = "openai"
+    GEMINI = "gemini"
+    GROQ = "groq"
+    MISTRAL = "mistral"
+
+
 class LLMFactory:
     """
-    Factory class for creating Anthropic LLM instances with centralized configuration.
+    Factory class for creating LLM instances with multi-provider support.
 
-    This factory uses ANTHROPIC EXCLUSIVELY - all models are accessed via the Anthropic API.
-    Supports different models for different components while maintaining consistency.
-
-    All instances are ChatAnthropic objects from langchain-anthropic.
+    This factory supports multiple AI providers while maintaining a consistent interface.
+    Falls back to default Anthropic configuration when user-specific config is not available.
     """
+
+    @staticmethod
+    def create_llm(
+        provider: str,
+        model: str,
+        api_key: str,
+        temperature: float = 0.3,
+        max_tokens: Optional[int] = None,
+    ) -> Any:
+        """
+        Create an LLM instance for the specified provider.
+
+        Args:
+            provider: Provider name (anthropic, openai, gemini, groq, mistral)
+            model: Model identifier
+            api_key: API key for the provider
+            temperature: Sampling temperature (default: 0.3)
+            max_tokens: Maximum tokens to generate (default: provider-specific)
+
+        Returns:
+            LangChain chat model instance
+
+        Raises:
+            ValueError: If provider is not supported
+        """
+        provider_lower = provider.lower()
+
+        if provider_lower == LLMProvider.ANTHROPIC:
+            return ChatAnthropic(
+                model=model,
+                anthropic_api_key=api_key,
+                temperature=temperature,
+                max_tokens=max_tokens or 2048,
+            )
+        elif provider_lower == LLMProvider.OPENAI:
+            return ChatOpenAI(
+                model=model,
+                openai_api_key=api_key,
+                temperature=temperature,
+                max_tokens=max_tokens or 2048,
+            )
+        elif provider_lower == LLMProvider.GEMINI:
+            return ChatGoogleGenerativeAI(
+                model=model,
+                google_api_key=api_key,
+                temperature=temperature,
+                max_output_tokens=max_tokens or 2048,
+            )
+        elif provider_lower == LLMProvider.GROQ:
+            return ChatGroq(
+                model=model,
+                groq_api_key=api_key,
+                temperature=temperature,
+                max_tokens=max_tokens or 2048,
+            )
+        elif provider_lower == LLMProvider.MISTRAL:
+            return ChatMistralAI(
+                model=model,
+                mistral_api_key=api_key,
+                temperature=temperature,
+                max_tokens=max_tokens or 2048,
+            )
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
 
     @staticmethod
     def create_clarification_llm() -> ChatAnthropic:
         """
         Create LLM instance for clarification/ambiguity detection.
+        Uses default Anthropic configuration.
 
         Returns:
             ChatAnthropic: Configured LLM instance for clarification tasks
@@ -39,13 +115,14 @@ class LLMFactory:
             model=settings.LLM_CLARIFICATION_MODEL,
             anthropic_api_key=settings.ANTHROPIC_API_KEY,
             temperature=settings.LLM_CLARIFICATION_TEMPERATURE,
-            max_tokens=settings.LLM_CLARIFICATION_MAX_TOKENS
+            max_tokens=settings.LLM_CLARIFICATION_MAX_TOKENS,
         )
 
     @staticmethod
     def create_template_filler_llm() -> ChatAnthropic:
         """
         Create LLM instance for template filling/CRS generation.
+        Uses default Anthropic configuration.
 
         Returns:
             ChatAnthropic: Configured LLM instance for template filling tasks
@@ -54,13 +131,14 @@ class LLMFactory:
             model=settings.LLM_TEMPLATE_FILLER_MODEL,
             anthropic_api_key=settings.ANTHROPIC_API_KEY,
             temperature=settings.LLM_TEMPLATE_FILLER_TEMPERATURE,
-            max_tokens=settings.LLM_TEMPLATE_FILLER_MAX_TOKENS
+            max_tokens=settings.LLM_TEMPLATE_FILLER_MAX_TOKENS,
         )
 
     @staticmethod
     def create_suggestions_llm() -> ChatAnthropic:
         """
         Create LLM instance for generating creative suggestions.
+        Uses default Anthropic configuration.
 
         Returns:
             ChatAnthropic: Configured LLM instance for suggestions generation
@@ -69,14 +147,14 @@ class LLMFactory:
             model=settings.LLM_SUGGESTIONS_MODEL,
             anthropic_api_key=settings.ANTHROPIC_API_KEY,
             temperature=settings.LLM_SUGGESTIONS_TEMPERATURE,
-            max_tokens=settings.LLM_SUGGESTIONS_MAX_TOKENS
+            max_tokens=settings.LLM_SUGGESTIONS_MAX_TOKENS,
         )
 
     @staticmethod
     def create_custom_llm(
         model: Optional[str] = None,
         temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
     ) -> ChatAnthropic:
         """
         Create a custom LLM instance with specific parameters.
@@ -94,11 +172,10 @@ class LLMFactory:
             model=model or settings.LLM_DEFAULT_MODEL,
             anthropic_api_key=settings.ANTHROPIC_API_KEY,
             temperature=temperature if temperature is not None else 0.3,
-            max_tokens=max_tokens or 2048
+            max_tokens=max_tokens or 2048,
         )
 
 
-# Convenience functions for backward compatibility
 def get_clarification_llm() -> ChatAnthropic:
     """Get LLM instance for clarification tasks."""
     return LLMFactory.create_clarification_llm()
@@ -117,7 +194,7 @@ def get_suggestions_llm() -> ChatAnthropic:
 def get_llm(
     model: Optional[str] = None,
     temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None
+    max_tokens: Optional[int] = None,
 ) -> ChatAnthropic:
     """
     Get a custom LLM instance.
