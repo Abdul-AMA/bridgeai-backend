@@ -4,16 +4,20 @@ LLM-powered Creative Suggestions Generator
 
 import json
 import logging
-from typing import Dict, List, Any
-from app.core.config import settings
+from typing import Any, Dict, List, Optional
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
 from app.ai.llm_factory import get_suggestions_llm
-from langchain_core.messages import SystemMessage, HumanMessage
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 def generate_creative_suggestions(
-    project_context: Dict[str, Any], current_input: str
+    project_context: Dict[str, Any],
+    current_input: str,
+    usage_out: Optional[List[dict]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Generate creative suggestions for additional features and scenarios
@@ -41,7 +45,21 @@ def generate_creative_suggestions(
         # Invoke LLM
         response = llm.invoke(messages)
         suggestions_text = response.content
-        
+
+        if usage_out is not None:
+            usage = getattr(response, "usage_metadata", None) or {}
+            cls = type(llm).__name__.lower()
+            provider = next((p for p in ("anthropic", "openai", "google", "groq", "mistral") if p in cls), "unknown")
+            model_name = response.response_metadata.get("model", getattr(llm, "model", "unknown"))
+            usage_out.append({
+                "node_type": "suggestions",
+                "model_name": model_name,
+                "provider": provider,
+                "input_tokens": usage.get("input_tokens", 0),
+                "output_tokens": usage.get("output_tokens", 0),
+                "total_tokens": usage.get("total_tokens", usage.get("input_tokens", 0) + usage.get("output_tokens", 0)),
+            })
+
         suggestions = _parse_suggestions_response(suggestions_text)
 
         logger.info(f"Generated {len(suggestions)} creative suggestions")
