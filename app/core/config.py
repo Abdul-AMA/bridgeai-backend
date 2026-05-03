@@ -24,32 +24,24 @@ class Settings(BaseSettings):
     EMAIL_FROM_NAME: str = "BridgeAI"
     # AI settings
     GROQ_API_KEY: str = ""  # Optional if using Anthropic
-    ANTHROPIC_API_KEY: str
+    ANTHROPIC_API_KEY: str = ""
 
     # Encryption key for user API keys at rest (Fernet symmetric encryption)
     ENCRYPTION_KEY: str = ""
 
     # LLM Model Configuration
-    # Default model for all AI operations (can be overridden per component)
-    # Available Anthropic models:
-    # - claude-3-5-sonnet-20240620 (Most capable & balanced)
-    # - claude-3-haiku-20240307 (Fast & cost-effective)
-    # - claude-3-opus-20240229 (Most powerful for complex reasoning)
-    LLM_DEFAULT_MODEL: str = "claude-3-5-sonnet-20240620"
+    LLM_DEFAULT_MODEL: str = "llama-3.3-70b-versatile"
 
     # Component-specific model configurations
-    # Clarification needs good reasoning - use Sonnet 3.5
-    LLM_CLARIFICATION_MODEL: str = "claude-3-5-sonnet-20240620"
+    LLM_CLARIFICATION_MODEL: str = "llama-3.3-70b-versatile"
     LLM_CLARIFICATION_TEMPERATURE: float = 0.3
     LLM_CLARIFICATION_MAX_TOKENS: int = 2048
 
-    # Template Filler needs structured extraction - use Sonnet 3.5
-    LLM_TEMPLATE_FILLER_MODEL: str = "claude-3-5-sonnet-20240620"
+    LLM_TEMPLATE_FILLER_MODEL: str = "llama-3.3-70b-versatile"
     LLM_TEMPLATE_FILLER_TEMPERATURE: float = 0.2
     LLM_TEMPLATE_FILLER_MAX_TOKENS: int = 4096
 
-    # Suggestions can use Haiku for speed and cost savings
-    LLM_SUGGESTIONS_MODEL: str = "claude-3-haiku-20240307"
+    LLM_SUGGESTIONS_MODEL: str = "llama3-8b-8192"
     LLM_SUGGESTIONS_TEMPERATURE: float = 0.7
     LLM_SUGGESTIONS_MAX_TOKENS: int = 2000
 

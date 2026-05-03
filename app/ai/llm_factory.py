@@ -103,49 +103,31 @@ class LLMFactory:
             raise ValueError(f"Unsupported provider: {provider}")
 
     @staticmethod
-    def create_clarification_llm() -> ChatAnthropic:
-        """
-        Create LLM instance for clarification/ambiguity detection.
-        Uses default Anthropic configuration.
-
-        Returns:
-            ChatAnthropic: Configured LLM instance for clarification tasks
-        """
-        return ChatAnthropic(
+    def create_clarification_llm() -> ChatGroq:
+        """Create LLM instance for clarification/ambiguity detection."""
+        return ChatGroq(
             model=settings.LLM_CLARIFICATION_MODEL,
-            anthropic_api_key=settings.ANTHROPIC_API_KEY,
+            groq_api_key=settings.GROQ_API_KEY,
             temperature=settings.LLM_CLARIFICATION_TEMPERATURE,
             max_tokens=settings.LLM_CLARIFICATION_MAX_TOKENS,
         )
 
     @staticmethod
-    def create_template_filler_llm() -> ChatAnthropic:
-        """
-        Create LLM instance for template filling/CRS generation.
-        Uses default Anthropic configuration.
-
-        Returns:
-            ChatAnthropic: Configured LLM instance for template filling tasks
-        """
-        return ChatAnthropic(
+    def create_template_filler_llm() -> ChatGroq:
+        """Create LLM instance for template filling/CRS generation."""
+        return ChatGroq(
             model=settings.LLM_TEMPLATE_FILLER_MODEL,
-            anthropic_api_key=settings.ANTHROPIC_API_KEY,
+            groq_api_key=settings.GROQ_API_KEY,
             temperature=settings.LLM_TEMPLATE_FILLER_TEMPERATURE,
             max_tokens=settings.LLM_TEMPLATE_FILLER_MAX_TOKENS,
         )
 
     @staticmethod
-    def create_suggestions_llm() -> ChatAnthropic:
-        """
-        Create LLM instance for generating creative suggestions.
-        Uses default Anthropic configuration.
-
-        Returns:
-            ChatAnthropic: Configured LLM instance for suggestions generation
-        """
-        return ChatAnthropic(
+    def create_suggestions_llm() -> ChatGroq:
+        """Create LLM instance for generating improvement suggestions."""
+        return ChatGroq(
             model=settings.LLM_SUGGESTIONS_MODEL,
-            anthropic_api_key=settings.ANTHROPIC_API_KEY,
+            groq_api_key=settings.GROQ_API_KEY,
             temperature=settings.LLM_SUGGESTIONS_TEMPERATURE,
             max_tokens=settings.LLM_SUGGESTIONS_MAX_TOKENS,
         )
@@ -155,38 +137,27 @@ class LLMFactory:
         model: Optional[str] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
-    ) -> ChatAnthropic:
-        """
-        Create a custom LLM instance with specific parameters.
-        Falls back to default settings for any unspecified parameters.
-
-        Args:
-            model: Model name (defaults to LLM_DEFAULT_MODEL)
-            temperature: Temperature setting (defaults to 0.3)
-            max_tokens: Maximum tokens (defaults to 2048)
-
-        Returns:
-            ChatAnthropic: Configured LLM instance
-        """
-        return ChatAnthropic(
+    ) -> ChatGroq:
+        """Create a custom LLM instance, falling back to default settings."""
+        return ChatGroq(
             model=model or settings.LLM_DEFAULT_MODEL,
-            anthropic_api_key=settings.ANTHROPIC_API_KEY,
+            groq_api_key=settings.GROQ_API_KEY,
             temperature=temperature if temperature is not None else 0.3,
             max_tokens=max_tokens or 2048,
         )
 
 
-def get_clarification_llm() -> ChatAnthropic:
+def get_clarification_llm() -> ChatGroq:
     """Get LLM instance for clarification tasks."""
     return LLMFactory.create_clarification_llm()
 
 
-def get_template_filler_llm() -> ChatAnthropic:
+def get_template_filler_llm() -> ChatGroq:
     """Get LLM instance for template filling tasks."""
     return LLMFactory.create_template_filler_llm()
 
 
-def get_suggestions_llm() -> ChatAnthropic:
+def get_suggestions_llm() -> ChatGroq:
     """Get LLM instance for suggestions generation."""
     return LLMFactory.create_suggestions_llm()
 
@@ -195,16 +166,6 @@ def get_llm(
     model: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
-) -> ChatAnthropic:
-    """
-    Get a custom LLM instance.
-
-    Args:
-        model: Model name (optional)
-        temperature: Temperature setting (optional)
-        max_tokens: Maximum tokens (optional)
-
-    Returns:
-        ChatAnthropic: Configured LLM instance
-    """
+) -> ChatGroq:
+    """Get a custom LLM instance."""
     return LLMFactory.create_custom_llm(model, temperature, max_tokens)

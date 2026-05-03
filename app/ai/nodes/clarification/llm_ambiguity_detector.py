@@ -11,6 +11,22 @@ from app.ai.llm_factory import get_clarification_llm
 logger = logging.getLogger(__name__)
 
 
+def _detect_provider(llm) -> str:
+    """Infer the provider name from a LangChain LLM instance class name."""
+    cls = type(llm).__name__.lower()
+    if "anthropic" in cls:
+        return "anthropic"
+    if "openai" in cls:
+        return "openai"
+    if "google" in cls or "gemini" in cls:
+        return "google"
+    if "groq" in cls:
+        return "groq"
+    if "mistral" in cls:
+        return "mistral"
+    return "unknown"
+
+
 @dataclass
 class Ambiguity:
     type: str
@@ -113,10 +129,10 @@ Return pure JSON now:
     def __init__(self):
         """
         Initialize the ambiguity detector with Anthropic LLM.
-        
+
         Model configuration is now centralized in app.core.config.
         To change the model, update the LLM_CLARIFICATION_MODEL setting in your .env file.
-        
+
         Available models:
         - claude-3-5-sonnet-20240620 (recommended for reasoning & structured output)
         - claude-3-haiku-20240307 (faster but less capable)
@@ -124,6 +140,7 @@ Return pure JSON now:
         """
         # Use centralized LLM factory
         self.llm = get_clarification_llm()
+        self._usage_records: List[dict] = []
 
         self.analysis_prompt = ChatPromptTemplate.from_template(self.ANALYSIS_PROMPT)
         self.question_prompt = ChatPromptTemplate.from_template(self.QUESTION_PROMPT)
@@ -151,13 +168,32 @@ Return pure JSON now:
                 f"Could not extract valid JSON from response: {text[:200]}..."
             )
 
+    def get_usage_records(self) -> List[dict]:
+        """Return accumulated usage records and clear the internal list."""
+        records = self._usage_records.copy()
+        self._usage_records.clear()
+        return records
+
     # -----------------------------------
     # LLM Wrapper
     # -----------------------------------
-    def _call_llm(self, messages):
-        """Call Anthropic LLM and return the response content."""
+    def _call_llm(self, messages, node_type: str = "clarification_analyze") -> str:
+        """Call LLM, record token usage, and return the response content."""
         try:
-            return self.llm.invoke(messages).content
+            response = self.llm.invoke(messages)
+            # LangChain standardizes usage across all providers via usage_metadata
+            usage = getattr(response, "usage_metadata", None) or {}
+            model_name = response.response_metadata.get("model", getattr(self.llm, "model", "unknown"))
+            provider = _detect_provider(self.llm)
+            self._usage_records.append({
+                "node_type": node_type,
+                "model_name": model_name,
+                "provider": provider,
+                "input_tokens": usage.get("input_tokens", 0),
+                "output_tokens": usage.get("output_tokens", 0),
+                "total_tokens": usage.get("total_tokens", usage.get("input_tokens", 0) + usage.get("output_tokens", 0)),
+            })
+            return response.content
         except Exception as e:
             logger.error(f"LLM call failed: {str(e)}")
             raise
@@ -199,7 +235,7 @@ Return pure JSON now:
                 extracted_fields=fields_text,
             )
 
-            raw = self._call_llm(messages)
+            raw = self._call_llm(messages, node_type="clarification_analyze")
             logger.info(f"LLM Analysis Response: {raw[:200]}...")
 
             result = self._extract_json(raw)
@@ -241,7 +277,7 @@ Return pure JSON now:
                 ambiguity_json=ambiguity_json
             )
 
-            raw = self._call_llm(messages)
+            raw = self._call_llm(messages, node_type="clarification_questions")
             logger.info(f"LLM Questions Response: {raw[:200]}...")
 
             result = self._extract_json(raw)

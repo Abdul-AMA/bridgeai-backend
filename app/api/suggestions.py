@@ -40,12 +40,26 @@ def generate_suggestions_endpoint(
             db=db, project_id=request.project_id, user_context=request.context or ""
         )
 
-        # Generate suggestions
+        # Generate suggestions, collecting token usage as a side-effect
+        usage_out: list = []
         suggestions = generate_creative_suggestions(
             project_context=project_context,
-            current_input=request.context
-            or "Generate creative suggestions for this project",
+            current_input=request.context or "Generate creative suggestions for this project",
+            usage_out=usage_out,
         )
+
+        # Persist usage (best-effort)
+        if usage_out:
+            try:
+                from app.services.usage_service import log_usage_records
+                log_usage_records(
+                    db,
+                    usage_out,
+                    user_id=current_user.id,
+                    project_id=request.project_id,
+                )
+            except Exception:
+                pass
 
         # Filter by categories if specified
         if request.categories:

@@ -14,6 +14,7 @@ from . import (
     projects,
     suggestions,
     teams,
+    usage,
 )
 
 router = APIRouter()
@@ -34,3 +35,4 @@ router.include_router(exports.router, prefix="/projects", tags=["exports"])
 router.include_router(memory.router, tags=["memory"])
 router.include_router(suggestions.router, tags=["suggestions"])
 router.include_router(comments.router, tags=["comments"])
+router.include_router(usage.router, prefix="/usage", tags=["usage"])

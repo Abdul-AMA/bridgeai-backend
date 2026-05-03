@@ -340,6 +340,21 @@ class BackgroundCRSGenerator:
             conversation_history=conversation_history,
             extracted_fields=existing_crs_content
         )
+
+        # Persist token usage for the batch fill + summary calls (best-effort)
+        usage_records = template_filler.get_usage_records()
+        if usage_records:
+            try:
+                from app.services.usage_service import log_usage_records
+                log_usage_records(
+                    db,
+                    usage_records,
+                    user_id=task.user_id,
+                    project_id=task.project_id,
+                    session_id=task.session_id,
+                )
+            except Exception as exc:
+                logger.warning(f"Failed to log template filler usage: {exc}")
         
         # Step 4: Emit template final update
         crs_template_dict = result["crs_template"].to_dict() if hasattr(result["crs_template"], "to_dict") else result["crs_template"]

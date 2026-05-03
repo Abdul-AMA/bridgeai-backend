@@ -1,4 +1,5 @@
 from .ai_memory_index import AIMemoryIndex
+from .ai_usage_log import AIUsageLog
 from .audit import CRSAuditLog
 from .comment import Comment
 from .crs import CRSDocument

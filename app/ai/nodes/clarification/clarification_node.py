@@ -46,9 +46,23 @@ def clarification_node(state: AgentState) -> Dict[str, Any]:
             # Gracefully handle memory lookup failures
             context["relevant_memories"] = []
 
-    # Run Anthropic-powered ambiguity detection
+    # Run ambiguity detection
     detector = LLMAmbiguityDetector()
     result = detector.analyze_and_generate_questions(user_input, context)
+
+    # Persist token usage (best-effort; never raises)
+    usage_records = detector.get_usage_records()
+    if usage_records and db and state.get("user_id"):
+        try:
+            from app.services.usage_service import log_usage_records
+            log_usage_records(
+                db,
+                usage_records,
+                user_id=state["user_id"],
+                project_id=state.get("project_id"),
+            )
+        except Exception:
+            pass
 
     ambiguities = result["ambiguities"]
     clarification_questions = result["clarification_questions"]

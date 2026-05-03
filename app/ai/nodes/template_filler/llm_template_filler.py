@@ -20,6 +20,22 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _detect_provider(llm) -> str:
+    """Infer the provider name from a LangChain LLM instance class name."""
+    cls = type(llm).__name__.lower()
+    if "anthropic" in cls:
+        return "anthropic"
+    if "openai" in cls:
+        return "openai"
+    if "google" in cls or "gemini" in cls:
+        return "google"
+    if "groq" in cls:
+        return "groq"
+    if "mistral" in cls:
+        return "mistral"
+    return "unknown"
+
+
 @dataclass
 class CRSTemplate:
     """Structured CRS Template for requirement documentation."""
@@ -541,6 +557,7 @@ Return pure JSON now:
         """
         # Use centralized LLM factory
         self.llm = get_template_filler_llm()
+        self._usage_records: List[dict] = []
 
         if pattern:
             self.pattern = str(pattern).lower().replace(" ", "_").replace("-", "_")
@@ -597,10 +614,27 @@ Return pure JSON now:
             logger.error(f"LLM streaming failed: {str(e)}")
             raise
 
-    def _call_llm(self, messages) -> str:
-        """Call Anthropic LLM and return the response content."""
+    def get_usage_records(self) -> List[dict]:
+        """Return accumulated usage records and clear the internal list."""
+        records = self._usage_records.copy()
+        self._usage_records.clear()
+        return records
+
+    def _call_llm(self, messages, node_type: str = "template_filler_extract") -> str:
+        """Call LLM, record token usage, and return the response content."""
         try:
             response = self.llm.invoke(messages)
+            usage = getattr(response, "usage_metadata", None) or {}
+            model_name = response.response_metadata.get("model", getattr(self.llm, "model", "unknown"))
+            provider = _detect_provider(self.llm)
+            self._usage_records.append({
+                "node_type": node_type,
+                "model_name": model_name,
+                "provider": provider,
+                "input_tokens": usage.get("input_tokens", 0),
+                "output_tokens": usage.get("output_tokens", 0),
+                "total_tokens": usage.get("total_tokens", usage.get("input_tokens", 0) + usage.get("output_tokens", 0)),
+            })
             return response.content
         except Exception as e:
             logger.error(f"LLM call failed: {str(e)}")
@@ -744,7 +778,7 @@ Return pure JSON now:
                 extracted_fields=fields_text,
             )
 
-            raw = self._call_llm(messages)
+            raw = self._call_llm(messages, node_type="template_filler_extract")
             logger.info(f"LLM Extraction Response: {raw[:300]}...")
 
             result = self._extract_json(raw)
@@ -794,7 +828,7 @@ Return pure JSON now:
 
             messages = self.summary_prompt.format_messages(crs_content=crs_content)
 
-            raw = self._call_llm(messages)
+            raw = self._call_llm(messages, node_type="template_filler_summary")
             logger.info(f"LLM Summary Response: {raw[:200]}...")
 
             result = self._extract_json(raw)
