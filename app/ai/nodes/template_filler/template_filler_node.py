@@ -36,7 +36,25 @@ def template_filler_node(state: AgentState) -> Dict[str, Any]:
     db = state.get("db")
     project_id = state.get("project_id")
     user_id = state.get("user_id")
-    crs_pattern = state.get("crs_pattern")  # Get pattern from state
+    crs_pattern = state.get("crs_pattern")
+
+    # Retrieve relevant document chunks from project knowledge base
+    document_context = []
+    if db and project_id:
+        try:
+            from app.ai.memory_service import search_project_memories
+
+            doc_results = search_project_memories(
+                db=db,
+                project_id=project_id,
+                query=user_input,
+                limit=3,
+                similarity_threshold=0.25,
+                source_type="document",
+            )
+            document_context = doc_results
+        except Exception:
+            pass
 
     # Initialize the template filler with pattern
     filler = LLMTemplateFiller(pattern=crs_pattern)
@@ -46,6 +64,7 @@ def template_filler_node(state: AgentState) -> Dict[str, Any]:
         user_input=user_input,
         conversation_history=conversation_history,
         extracted_fields=extracted_fields,
+        document_context=document_context,
     )
 
     # Build response message

@@ -11,6 +11,7 @@ class SourceType(enum.Enum):
     message = "message"
     comment = "comment"
     summary = "summary"
+    document = "document"
 
 
 class AIMemoryIndex(Base):

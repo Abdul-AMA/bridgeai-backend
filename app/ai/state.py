@@ -40,3 +40,6 @@ class AgentState(TypedDict, total=False):
     db: Optional[Any]  # SQLAlchemy Session for memory queries
     message_id: Optional[int]
     intent: Optional[str]
+
+    # RAG document context (retrieved document chunks for current turn)
+    document_context: Optional[List[Dict[str, Any]]]

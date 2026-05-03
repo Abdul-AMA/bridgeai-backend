@@ -153,6 +153,9 @@ USER'S LATEST INPUT:
 CONVERSATION HISTORY:
 {conversation_history}
 
+RELEVANT DOCUMENT CONTEXT (project knowledge base):
+{document_context}
+
 PREVIOUSLY EXTRACTED FIELDS:
 {extracted_fields}
 
@@ -221,6 +224,9 @@ USER'S LATEST INPUT:
 
 CONVERSATION HISTORY:
 {conversation_history}
+
+RELEVANT DOCUMENT CONTEXT (project knowledge base):
+{document_context}
 
 PREVIOUSLY EXTRACTED FIELDS:
 {extracted_fields}
@@ -293,6 +299,9 @@ USER'S LATEST INPUT:
 CONVERSATION HISTORY:
 {conversation_history}
 
+RELEVANT DOCUMENT CONTEXT (project knowledge base):
+{document_context}
+
 PREVIOUSLY EXTRACTED FIELDS:
 {extracted_fields}
 
@@ -364,6 +373,9 @@ USER'S LATEST INPUT:
 
 CONVERSATION HISTORY:
 {conversation_history}
+
+RELEVANT DOCUMENT CONTEXT (project knowledge base):
+{document_context}
 
 PREVIOUSLY EXTRACTED FIELDS:
 {extracted_fields}
@@ -440,6 +452,9 @@ USER'S LATEST INPUT:
 
 CONVERSATION HISTORY:
 {conversation_history}
+
+RELEVANT DOCUMENT CONTEXT (project knowledge base):
+{document_context}
 
 PREVIOUSLY EXTRACTED FIELDS:
 {extracted_fields}
@@ -725,6 +740,7 @@ Return pure JSON now:
         conversation_history: list,
         extracted_fields: Dict[str, Any],
         allow_inference: bool = False,
+        document_context: Optional[List[Dict[str, Any]]] = None,
     ) -> CRSTemplate:
         """
         Extract requirements from conversation and map to CRS template.
@@ -772,9 +788,21 @@ Return pure JSON now:
 
             formatted_user_input = f"{user_input}{inference_instr}"
 
+            # Format uploaded document context
+            doc_chunks = document_context or []
+            if doc_chunks:
+                doc_context_text = "\n".join(
+                    f"[{c.get('metadata', {}).get('filename', 'document')}]: {c.get('text', c)}"
+                    if isinstance(c, dict) else str(c)
+                    for c in doc_chunks
+                )
+            else:
+                doc_context_text = "No uploaded documents in project knowledge base."
+
             messages = self.extraction_prompt.format_messages(
                 user_input=formatted_user_input,
                 conversation_history=history_text,
+                document_context=doc_context_text,
                 extracted_fields=fields_text,
             )
 
@@ -877,6 +905,7 @@ Return pure JSON now:
         conversation_history: list = None,
         extracted_fields: Dict[str, Any] = None,
         allow_inference: bool = None,
+        document_context: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncGenerator[Dict, None]:
         """
         Streaming version of fill_template.
@@ -886,8 +915,7 @@ Return pure JSON now:
         actual_allow_inference = allow_inference if allow_inference is not None else False
         self._last_allow_inference = actual_allow_inference
 
-        # Format prompt
-        # (Same logic as fill_template, but simplified for clarity)
+        # Format prompt (same logic as fill_template)
         history_text = "No previous conversation"
         if conversation_history:
             formatted_history = []
@@ -899,7 +927,17 @@ Return pure JSON now:
             history_text = "\n".join(formatted_history[-10:])
 
         fields_text = json.dumps(extracted_fields, indent=2) if extracted_fields else "No previously extracted fields"
-        
+
+        doc_chunks = document_context or []
+        if doc_chunks:
+            doc_context_text = "\n".join(
+                f"[{c.get('metadata', {}).get('filename', 'document')}]: {c.get('text', c)}"
+                if isinstance(c, dict) else str(c)
+                for c in doc_chunks
+            )
+        else:
+            doc_context_text = "No uploaded documents in project knowledge base."
+
         inference_instr = ""
         if actual_allow_inference:
             inference_instr = "\n\n--- AUTO-FILL MODE ENABLED ---\nYou may now intelligently infer or suggest values for missing sections."
@@ -907,6 +945,7 @@ Return pure JSON now:
         messages = self.extraction_prompt.format_messages(
             user_input=f"{user_input}{inference_instr}",
             conversation_history=history_text,
+            document_context=doc_context_text,
             extracted_fields=fields_text,
         )
 
@@ -922,6 +961,7 @@ Return pure JSON now:
         extracted_fields: Dict[str, Any],
         previous_template: Optional[CRSTemplate] = None,
         allow_inference: Optional[bool] = None,
+        document_context: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
         Complete workflow: Extract requirements, fill template, generate summary, track sources.
@@ -947,7 +987,8 @@ Return pure JSON now:
             user_input=user_input,
             conversation_history=conversation_history,
             extracted_fields=extracted_fields,
-            allow_inference=actual_allow_inference
+            allow_inference=actual_allow_inference,
+            document_context=document_context,
         )
 
         # Track field sources

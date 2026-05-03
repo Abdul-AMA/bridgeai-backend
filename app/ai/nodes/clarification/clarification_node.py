@@ -43,8 +43,30 @@ def clarification_node(state: AgentState) -> Dict[str, Any]:
                 for m in relevant_memories
             ]
         except Exception:
-            # Gracefully handle memory lookup failures
             context["relevant_memories"] = []
+
+        # Enrich context with uploaded document chunks (RAG)
+        try:
+            from app.ai.memory_service import search_project_memories
+
+            doc_results = search_project_memories(
+                db=db,
+                project_id=project_id,
+                query=user_input,
+                limit=3,
+                similarity_threshold=0.25,
+                source_type="document",
+            )
+            context["document_context"] = [
+                {
+                    "text": r["text"],
+                    "filename": r.get("metadata", {}).get("filename", "uploaded document"),
+                    "similarity": r["similarity_score"],
+                }
+                for r in doc_results
+            ]
+        except Exception:
+            context["document_context"] = []
 
     # Run ambiguity detection
     detector = LLMAmbiguityDetector()
@@ -87,8 +109,6 @@ def clarification_node(state: AgentState) -> Dict[str, Any]:
         # Default for clear requirements
         response = f"Your requirements are clear. (Clarity Score: {clarity_score}/100)"
 
-    # Update state and return
-    # Update state and return
     return {
         "clarification_questions": clarification_questions,
         "ambiguities": [
@@ -107,6 +127,7 @@ def clarification_node(state: AgentState) -> Dict[str, Any]:
         "output": response,
         "last_node": "clarification",
         "intent": intent,
+        "document_context": context.get("document_context", []),
     }
 
 
