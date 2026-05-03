@@ -1,13 +1,14 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
+
 class Settings(BaseSettings):
     DATABASE_URL: str
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     FRONTEND_URL: str = "http://localhost:3000"
-    
+
     # Google Auth
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
@@ -24,6 +25,9 @@ class Settings(BaseSettings):
     # AI settings
     GROQ_API_KEY: str = ""  # Optional if using Anthropic
     ANTHROPIC_API_KEY: str
+
+    # Encryption key for user API keys at rest (Fernet symmetric encryption)
+    ENCRYPTION_KEY: str = ""
 
     # LLM Model Configuration
     # Default model for all AI operations (can be overridden per component)
@@ -48,7 +52,7 @@ class Settings(BaseSettings):
     LLM_SUGGESTIONS_MODEL: str = "claude-3-haiku-20240307"
     LLM_SUGGESTIONS_TEMPERATURE: float = 0.7
     LLM_SUGGESTIONS_MAX_TOKENS: int = 2000
-    
+
     # ChromaDB settings (vector database for semantic search)
     CHROMA_SERVER_HOST: str = "localhost"
     CHROMA_SERVER_HTTP_PORT: int = 8001
@@ -58,5 +62,6 @@ class Settings(BaseSettings):
 
     chroma_db_path: str = Field(default="./chroma_db")
     embedding_model: str = Field(default="openai")
+
 
 settings = Settings()
