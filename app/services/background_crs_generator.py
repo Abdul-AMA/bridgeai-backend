@@ -259,17 +259,42 @@ class BackgroundCRSGenerator:
             if existing_crs:
                 existing_crs_content = existing_crs.content
         
+        # Retrieve relevant document chunks from project knowledge base
+        document_context = []
+        try:
+            from app.ai.memory_service import search_project_memories
+            document_context = search_project_memories(
+                db=db,
+                project_id=task.project_id,
+                query=combined_input,
+                limit=3,
+                similarity_threshold=0.25,
+                source_type="document",
+            )
+        except Exception:
+            pass
+
+        # Fetch project context summary for prompt injection
+        project_summary = "No project summary available yet."
+        try:
+            from app.services.summary_service import get_summary_content
+            project_summary = get_summary_content(task.project_id, db)
+        except Exception:
+            pass
+
         # Stream fill template
         last_emit_time = 0
         last_autosave_time = 0
         final_result = {}
         autosave_interval = 10.0  # Auto-save draft every 10 seconds
         draft_crs_id = None
-        
+
         async for partial_json in template_filler.fill_template_stream(
             user_input=combined_input,
             conversation_history=conversation_history,
-            extracted_fields=existing_crs_content
+            extracted_fields=existing_crs_content,
+            document_context=document_context,
+            project_summary=project_summary,
         ):
             final_result = partial_json
             current_time = asyncio.get_event_loop().time()

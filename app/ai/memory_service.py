@@ -140,9 +140,10 @@ def search_project_memories(
     query: str,
     limit: int = 5,
     similarity_threshold: float = 0.3,
+    source_type: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Search project memories using semantic search
+    Search project memories using semantic search.
 
     Args:
         db: Database session
@@ -150,17 +151,19 @@ def search_project_memories(
         query: Search query
         limit: Max results to return
         similarity_threshold: Minimum similarity score
+        source_type: Optional filter by source type (crs, message, comment, summary, document)
 
     Returns:
-        List of relevant memories with similarity scores
+        List of relevant memories with similarity scores and ChromaDB metadata
     """
     try:
-        # Search ChromaDB
+        # Search ChromaDB (server-side filtered by project_id + optional source_type)
         chroma_results = search_embeddings(
             query=query,
             project_id=project_id,
             n_results=limit,
             distance_threshold=similarity_threshold,
+            source_type=source_type,
         )
 
         # Enrich with MySQL data
@@ -183,6 +186,7 @@ def search_project_memories(
                         "embedding_id": embedding_id,
                         "text": result["text"],
                         "similarity_score": result["similarity_score"],
+                        "metadata": result.get("metadata", {}),
                         "created_at": memory.created_at.isoformat(),
                     }
                 )

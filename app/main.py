@@ -48,6 +48,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logging.error(f"Failed to start CRS worker: {str(e)}")
 
+    # Start background summary generation worker
+    try:
+        from app.services.background_summary_generator import start_summary_worker
+        await start_summary_worker()
+        logging.info("Background summary generation worker started.")
+    except Exception as e:
+        logging.error(f"Failed to start summary worker: {str(e)}")
+
     yield  # The app stays running here
 
     # Cleanup: Stop background CRS worker
@@ -57,6 +65,14 @@ async def lifespan(app: FastAPI):
         logging.info("Background CRS worker stopped.")
     except Exception as e:
         logging.error(f"Failed to stop CRS worker: {str(e)}")
+
+    # Cleanup: Stop background summary worker
+    try:
+        from app.services.background_summary_generator import stop_summary_worker
+        await stop_summary_worker()
+        logging.info("Background summary worker stopped.")
+    except Exception as e:
+        logging.error(f"Failed to stop summary worker: {str(e)}")
 
 
 app = FastAPI(

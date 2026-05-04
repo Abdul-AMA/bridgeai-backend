@@ -31,3 +31,6 @@ sentence_transformers
 markdown
 xhtml2pdf
 google-auth
+pypdf>=4.0.0
+python-docx>=1.0.0
+aiofiles>=23.0.0

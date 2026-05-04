@@ -71,6 +71,9 @@ IF INTENT IS "requirement":
 - Identify any ambiguities or missing information that would prevent a developer from implementing the requirement.
 - Use the CONTEXT to understand if a requirement contradicts or duplicates previous ones.
 
+PROJECT CONTEXT SUMMARY:
+{project_summary}
+
 USER INPUT:
 {user_input}
 
@@ -80,6 +83,9 @@ Conversation History:
 
 Relevant Memories (Previous Requirements/Context):
 {relevant_memories}
+
+Uploaded Document Context (excerpts from project knowledge base):
+{document_context}
 
 Extracted Fields:
 {extracted_fields}
@@ -222,16 +228,30 @@ Return pure JSON now:
             else:
                 memories_text = "No relevant past memories found."
 
+            # Format uploaded document context
+            doc_chunks = context.get("document_context", [])
+            if doc_chunks:
+                doc_context_text = "\n".join(
+                    f"[{c.get('filename', 'document')}]: {c['text']}"
+                    for c in doc_chunks
+                )
+            else:
+                doc_context_text = "No uploaded documents in project knowledge base."
+
             # Format extracted fields
             fields = context.get("extracted_fields", {})
             fields_text = (
                 json.dumps(fields, indent=2) if fields else "No extracted fields yet"
             )
 
+            project_summary = context.get("project_summary", "No project summary available yet.")
+
             messages = self.analysis_prompt.format_messages(
                 user_input=user_input,
+                project_summary=project_summary,
                 conversation_history=history_text,
                 relevant_memories=memories_text,
+                document_context=doc_context_text,
                 extracted_fields=fields_text,
             )
 
