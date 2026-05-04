@@ -68,6 +68,13 @@ def clarification_node(state: AgentState) -> Dict[str, Any]:
         except Exception:
             context["document_context"] = []
 
+        # Fetch project context summary for prompt injection
+        try:
+            from app.services.summary_service import get_summary_content
+            context["project_summary"] = get_summary_content(project_id, db)
+        except Exception:
+            context["project_summary"] = "No project summary available yet."
+
     # Run ambiguity detection
     detector = LLMAmbiguityDetector()
     result = detector.analyze_and_generate_questions(user_input, context)
@@ -128,6 +135,7 @@ def clarification_node(state: AgentState) -> Dict[str, Any]:
         "last_node": "clarification",
         "intent": intent,
         "document_context": context.get("document_context", []),
+        "project_summary": context.get("project_summary", "No project summary available yet."),
     }
 
 

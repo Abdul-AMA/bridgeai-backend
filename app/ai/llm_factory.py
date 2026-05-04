@@ -103,6 +103,16 @@ class LLMFactory:
             raise ValueError(f"Unsupported provider: {provider}")
 
     @staticmethod
+    def create_summary_llm() -> ChatGroq:
+        """Create LLM instance for project context summarization."""
+        return ChatGroq(
+            model=settings.LLM_CLARIFICATION_MODEL,
+            groq_api_key=settings.GROQ_API_KEY,
+            temperature=0.3,
+            max_tokens=512,
+        )
+
+    @staticmethod
     def create_clarification_llm() -> ChatGroq:
         """Create LLM instance for clarification/ambiguity detection."""
         return ChatGroq(
@@ -145,6 +155,11 @@ class LLMFactory:
             temperature=temperature if temperature is not None else 0.3,
             max_tokens=max_tokens or 2048,
         )
+
+
+def get_summary_llm() -> ChatGroq:
+    """Get LLM instance for project context summarization (low token cap — summaries are short)."""
+    return LLMFactory.create_summary_llm()
 
 
 def get_clarification_llm() -> ChatGroq:

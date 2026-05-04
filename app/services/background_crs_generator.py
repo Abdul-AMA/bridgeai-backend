@@ -274,6 +274,14 @@ class BackgroundCRSGenerator:
         except Exception:
             pass
 
+        # Fetch project context summary for prompt injection
+        project_summary = "No project summary available yet."
+        try:
+            from app.services.summary_service import get_summary_content
+            project_summary = get_summary_content(task.project_id, db)
+        except Exception:
+            pass
+
         # Stream fill template
         last_emit_time = 0
         last_autosave_time = 0
@@ -286,6 +294,7 @@ class BackgroundCRSGenerator:
             conversation_history=conversation_history,
             extracted_fields=existing_crs_content,
             document_context=document_context,
+            project_summary=project_summary,
         ):
             final_result = partial_json
             current_time = asyncio.get_event_loop().time()

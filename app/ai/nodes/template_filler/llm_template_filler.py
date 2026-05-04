@@ -153,6 +153,9 @@ USER'S LATEST INPUT:
 CONVERSATION HISTORY:
 {conversation_history}
 
+PROJECT CONTEXT SUMMARY:
+{project_summary}
+
 RELEVANT DOCUMENT CONTEXT (project knowledge base):
 {document_context}
 
@@ -224,6 +227,9 @@ USER'S LATEST INPUT:
 
 CONVERSATION HISTORY:
 {conversation_history}
+
+PROJECT CONTEXT SUMMARY:
+{project_summary}
 
 RELEVANT DOCUMENT CONTEXT (project knowledge base):
 {document_context}
@@ -299,6 +305,9 @@ USER'S LATEST INPUT:
 CONVERSATION HISTORY:
 {conversation_history}
 
+PROJECT CONTEXT SUMMARY:
+{project_summary}
+
 RELEVANT DOCUMENT CONTEXT (project knowledge base):
 {document_context}
 
@@ -373,6 +382,9 @@ USER'S LATEST INPUT:
 
 CONVERSATION HISTORY:
 {conversation_history}
+
+PROJECT CONTEXT SUMMARY:
+{project_summary}
 
 RELEVANT DOCUMENT CONTEXT (project knowledge base):
 {document_context}
@@ -452,6 +464,9 @@ USER'S LATEST INPUT:
 
 CONVERSATION HISTORY:
 {conversation_history}
+
+PROJECT CONTEXT SUMMARY:
+{project_summary}
 
 RELEVANT DOCUMENT CONTEXT (project knowledge base):
 {document_context}
@@ -741,6 +756,7 @@ Return pure JSON now:
         extracted_fields: Dict[str, Any],
         allow_inference: bool = False,
         document_context: Optional[List[Dict[str, Any]]] = None,
+        project_summary: str = "No project summary available yet.",
     ) -> CRSTemplate:
         """
         Extract requirements from conversation and map to CRS template.
@@ -801,6 +817,7 @@ Return pure JSON now:
 
             messages = self.extraction_prompt.format_messages(
                 user_input=formatted_user_input,
+                project_summary=project_summary,
                 conversation_history=history_text,
                 document_context=doc_context_text,
                 extracted_fields=fields_text,
@@ -906,6 +923,7 @@ Return pure JSON now:
         extracted_fields: Dict[str, Any] = None,
         allow_inference: bool = None,
         document_context: Optional[List[Dict[str, Any]]] = None,
+        project_summary: str = "No project summary available yet.",
     ) -> AsyncGenerator[Dict, None]:
         """
         Streaming version of fill_template.
@@ -944,6 +962,7 @@ Return pure JSON now:
 
         messages = self.extraction_prompt.format_messages(
             user_input=f"{user_input}{inference_instr}",
+            project_summary=project_summary,
             conversation_history=history_text,
             document_context=doc_context_text,
             extracted_fields=fields_text,
@@ -962,6 +981,7 @@ Return pure JSON now:
         previous_template: Optional[CRSTemplate] = None,
         allow_inference: Optional[bool] = None,
         document_context: Optional[List[Dict[str, Any]]] = None,
+        project_summary: str = "No project summary available yet.",
     ) -> Dict[str, Any]:
         """
         Complete workflow: Extract requirements, fill template, generate summary, track sources.
@@ -989,6 +1009,7 @@ Return pure JSON now:
             extracted_fields=extracted_fields,
             allow_inference=actual_allow_inference,
             document_context=document_context,
+            project_summary=project_summary,
         )
 
         # Track field sources

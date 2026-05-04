@@ -220,6 +220,14 @@ async def websocket_endpoint(
 
                 await manager.broadcast_to_session(message_response, chat_id)
 
+                # Auto-trigger summary regeneration on new client messages (debounced)
+                if sender_type == SenderType.client:
+                    try:
+                        from app.services.background_summary_generator import queue_summary_generation
+                        queue_summary_generation(project_id, trigger="chat")
+                    except Exception as _e:
+                        print(f"[WebSocket] Could not trigger summary generation: {_e}")
+
                 # ---------------------------------------------------------
                 # AI RESPONSE LOGIC
                 # ---------------------------------------------------------

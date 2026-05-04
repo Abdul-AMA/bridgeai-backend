@@ -56,6 +56,15 @@ def template_filler_node(state: AgentState) -> Dict[str, Any]:
         except Exception:
             pass
 
+    # Fetch project context summary for prompt injection
+    project_summary = "No project summary available yet."
+    if db and project_id:
+        try:
+            from app.services.summary_service import get_summary_content
+            project_summary = get_summary_content(project_id, db)
+        except Exception:
+            pass
+
     # Initialize the template filler with pattern
     filler = LLMTemplateFiller(pattern=crs_pattern)
 
@@ -65,6 +74,7 @@ def template_filler_node(state: AgentState) -> Dict[str, Any]:
         conversation_history=conversation_history,
         extracted_fields=extracted_fields,
         document_context=document_context,
+        project_summary=project_summary,
     )
 
     # Build response message

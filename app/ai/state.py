@@ -43,3 +43,6 @@ class AgentState(TypedDict, total=False):
 
     # RAG document context (retrieved document chunks for current turn)
     document_context: Optional[List[Dict[str, Any]]]
+
+    # Project-level context summary (fetched once per chat turn)
+    project_summary: Optional[str]
