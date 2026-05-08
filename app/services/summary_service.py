@@ -98,13 +98,25 @@ async def generate_summary(project_id: int, trigger: str, db: Session) -> None:
                 messages.reverse()
                 chat_history = "\n".join(f"- {m.content}" for m in messages)
 
-        # Fetch top-10 document chunks via semantic search
+        # Build a rich RAG query from project description + recent chat so we
+        # surface document chunks even when the project description is sparse.
+        recent_messages_text = (
+            chat_history.replace("- ", "").replace("\n", " ")
+            if chat_history != "No chat history yet."
+            else ""
+        )
+        rag_query = " ".join(
+            filter(None, [project_description, recent_messages_text])
+        ) or "project requirements"
+
+        # Fetch top-5 document chunks via semantic search (keep below typical
+        # collection size to avoid ChromaDB n_results > collection_size errors).
         doc_chunks = search_project_memories(
             db=db,
             project_id=project_id,
-            query=project_description or "project requirements",
-            limit=10,
-            similarity_threshold=0.1,
+            query=rag_query,
+            limit=5,
+            similarity_threshold=0.05,
             source_type="document",
         )
         document_context = "No documents uploaded yet."
@@ -121,7 +133,7 @@ async def generate_summary(project_id: int, trigger: str, db: Session) -> None:
         )
 
         llm = get_summary_llm()
-        response = llm.invoke([HumanMessage(content=prompt)])
+        response = await llm.ainvoke([HumanMessage(content=prompt)])
         content = response.content.strip()
 
         row.content = content

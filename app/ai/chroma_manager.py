@@ -291,15 +291,26 @@ def search_embeddings(
     try:
         collection = get_collection()
 
-        # Build metadata filter
-        where_filter = {"project_id": {"$eq": project_id}}
+        # Build metadata filter — ChromaDB requires $and for multiple conditions
         if source_type:
-            where_filter["source_type"] = {"$eq": source_type}
+            where_filter = {
+                "$and": [
+                    {"project_id": {"$eq": project_id}},
+                    {"source_type": {"$eq": source_type}},
+                ]
+            }
+        else:
+            where_filter = {"project_id": {"$eq": project_id}}
+
+        # Clamp n_results to the actual collection size to avoid ChromaDB's
+        # "n_results > number of elements" error when the collection is small.
+        total_count = collection.count()
+        safe_n = min(n_results, max(total_count, 1))
 
         # Query with optimized filtering
         results = collection.query(
             query_texts=[query],
-            n_results=n_results,
+            n_results=safe_n,
             where=where_filter,  # Server-side filtering for performance
         )
 
