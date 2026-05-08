@@ -45,7 +45,7 @@ def get_context_summary(
     response_model=ProjectContextSummaryOut,
     status_code=status.HTTP_202_ACCEPTED,
 )
-def regenerate_context_summary(
+async def regenerate_context_summary(
     project_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

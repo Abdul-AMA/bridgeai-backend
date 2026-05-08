@@ -201,19 +201,10 @@ class DocumentService:
 
             # Auto-trigger summary regeneration now that a new document is available.
             # process_document_embeddings runs in a BackgroundTasks thread pool (sync),
-            # so we schedule the coroutine onto the running asyncio event loop.
+            # so we use the thread-safe helper that schedules via call_soon_threadsafe.
             try:
-                import asyncio as _asyncio
-                from app.services.background_summary_generator import queue_summary_generation as _qsg
-
-                project_id_for_summary = doc.project_id
-                loop = _asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.call_soon_threadsafe(
-                        lambda: _qsg(project_id_for_summary, "document")
-                    )
-                else:
-                    _qsg(project_id_for_summary, "document")
+                from app.services.background_summary_generator import queue_summary_generation_from_thread
+                queue_summary_generation_from_thread(doc.project_id, "document")
             except Exception as _e:
                 logger.warning(f"Could not trigger summary generation: {_e}")
 

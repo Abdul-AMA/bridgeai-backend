@@ -124,9 +124,12 @@ class BackgroundSummaryGenerator:
 
 # Module-level singleton and helpers
 _generator = BackgroundSummaryGenerator()
+_event_loop: asyncio.AbstractEventLoop | None = None
 
 
 async def start_summary_worker():
+    global _event_loop
+    _event_loop = asyncio.get_running_loop()
     asyncio.create_task(_generator.start_worker())
 
 
@@ -135,5 +138,20 @@ async def stop_summary_worker():
 
 
 def queue_summary_generation(project_id: int, trigger: str) -> bool:
-    """Thread-safe enqueue — callable from both sync and async contexts."""
+    """Enqueue from async context (event loop thread)."""
+    return _generator.queue_generation(project_id, trigger)
+
+
+def queue_summary_generation_from_thread(project_id: int, trigger: str) -> bool:
+    """
+    Thread-safe enqueue for use from sync background threads.
+    Uses call_soon_threadsafe so the asyncio Queue is only touched
+    from within the event loop, avoiding cross-thread race conditions.
+    """
+    if _event_loop is not None and _event_loop.is_running():
+        _event_loop.call_soon_threadsafe(
+            lambda: _generator.queue_generation(project_id, trigger)
+        )
+        return True
+    # Fallback: no running loop yet (e.g. tests) — call directly
     return _generator.queue_generation(project_id, trigger)
