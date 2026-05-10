@@ -27,34 +27,41 @@ from app.api import router as api_router  # noqa: E402
 from app.core.middleware import SecurityHeadersMiddleware  # noqa: E402
 from app.core.rate_limit import limiter  # noqa: E402
 
-# 1. LIFESPAN: This is the secret. The app "starts" first, THEN runs this.
+async def _run_worker(name: str, coro, critical: bool = False):
+    """Start or stop a background worker, logging errors. Re-raises if critical=True."""
+    try:
+        await coro()
+        logging.info(f"{name} started.")
+    except Exception as e:
+        logging.error(f"{name} failed: {e}")
+        if critical:
+            raise
+
+
+async def _stop_worker(name: str, coro):
+    try:
+        await coro()
+        logging.info(f"{name} stopped.")
+    except Exception as e:
+        logging.error(f"Failed to stop {name}: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # This runs AFTER the server starts listening on the port
-    logging.info("Starting heavy initialization...")
+    logging.info("Starting BridgeAI services...")
+
+    # ChromaDB is critical — if it fails, RAG and embeddings are broken for all requests.
     try:
         chroma_client, chroma_collection = initialize_chroma()
         app.state.chroma_client = chroma_client
         app.state.chroma_collection = chroma_collection
-        logging.info("ChromaDB successfully initialized in background.")
+        logging.info("ChromaDB initialized.")
     except Exception as e:
-        logging.error(f"ChromaDB failed: {str(e)}")
-    
-    # Start background CRS generation worker
-    try:
-        from app.services.background_crs_generator import start_crs_worker
-        await start_crs_worker()
-        logging.info("Background CRS generation worker started.")
-    except Exception as e:
-        logging.error(f"Failed to start CRS worker: {str(e)}")
+        logging.error(f"ChromaDB initialization failed: {e}")
+        raise
 
-    # Start background summary generation worker
-    try:
-        from app.services.background_summary_generator import start_summary_worker
-        await start_summary_worker()
-        logging.info("Background summary generation worker started.")
-    except Exception as e:
-        logging.error(f"Failed to start summary worker: {str(e)}")
+    from app.services.background_crs_generator import start_crs_worker, stop_crs_worker
+    from app.services.background_summary_generator import start_summary_worker, stop_summary_worker
 
     # Start background RTM generation worker
     try:
@@ -66,21 +73,10 @@ async def lifespan(app: FastAPI):
 
     yield  # The app stays running here
 
-    # Cleanup: Stop background CRS worker
-    try:
-        from app.services.background_crs_generator import stop_crs_worker
-        await stop_crs_worker()
-        logging.info("Background CRS worker stopped.")
-    except Exception as e:
-        logging.error(f"Failed to stop CRS worker: {str(e)}")
+    yield
 
-    # Cleanup: Stop background summary worker
-    try:
-        from app.services.background_summary_generator import stop_summary_worker
-        await stop_summary_worker()
-        logging.info("Background summary worker stopped.")
-    except Exception as e:
-        logging.error(f"Failed to stop summary worker: {str(e)}")
+    await _stop_worker("CRS worker", stop_crs_worker)
+    await _stop_worker("Summary worker", stop_summary_worker)
 
     # Cleanup: Stop background RTM worker
     try:

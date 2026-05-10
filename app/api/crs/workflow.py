@@ -2,10 +2,10 @@
 CRS Workflow Module.
 Handles CRS review queue, status updates, and approval workflows.
 """
-import json
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from app.core.json_utils import safe_json_loads
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
@@ -82,12 +82,7 @@ def read_review_queue(
     # Convert to response format
     result = []
     for crs in crs_documents:
-        try:
-            summary_points = (
-                json.loads(crs.summary_points) if crs.summary_points else []
-            )
-        except Exception:
-            summary_points = []
+        summary_points = safe_json_loads(crs.summary_points, default=[])
 
         result.append(
             CRSOut(
@@ -169,19 +164,8 @@ def list_my_crs_requests(
     # Convert to response format
     result = []
     for crs in crs_documents:
-        try:
-            summary_points = (
-                json.loads(crs.summary_points) if crs.summary_points else []
-            )
-        except Exception:
-            summary_points = []
-
-        try:
-            field_sources_data = (
-                json.loads(crs.field_sources) if crs.field_sources else None
-            )
-        except Exception:
-            field_sources_data = None
+        summary_points = safe_json_loads(crs.summary_points, default=[])
+        field_sources_data = safe_json_loads(crs.field_sources, default=None)
 
         result.append(
             CRSOut(
@@ -336,8 +320,8 @@ def update_crs_status_endpoint(
         version=updated_crs.version,
         edit_version=updated_crs.edit_version,
         content=updated_crs.content,
-        summary_points=summary_points,
-        field_sources=field_sources_data,
+        summary_points=safe_json_loads(updated_crs.summary_points, default=[]),
+        field_sources=safe_json_loads(updated_crs.field_sources, default=None),
         created_by=updated_crs.created_by,
         approved_by=updated_crs.approved_by,
         rejection_reason=updated_crs.rejection_reason,

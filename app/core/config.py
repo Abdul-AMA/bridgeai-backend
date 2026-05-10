@@ -23,13 +23,18 @@ class Settings(BaseSettings):
     EMAIL_FROM_ADDRESS: str = "admin@bridge-ai.dev"
     EMAIL_FROM_NAME: str = "BridgeAI"
     # AI settings
-    GROQ_API_KEY: str = ""  # Optional if using Anthropic
+    GROQ_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
+    MISTRAL_API_KEY: str = ""
 
     # Encryption key for user API keys at rest (Fernet symmetric encryption)
     ENCRYPTION_KEY: str = ""
 
-    # LLM Model Configuration
+    # LLM Provider & Model Configuration
+    # Set LLM_DEFAULT_PROVIDER to switch all AI roles to a different provider.
+    LLM_DEFAULT_PROVIDER: str = "groq"
     LLM_DEFAULT_MODEL: str = "llama-3.3-70b-versatile"
 
     # Component-specific model configurations
@@ -44,6 +49,10 @@ class Settings(BaseSettings):
     LLM_SUGGESTIONS_MODEL: str = "llama3-8b-8192"
     LLM_SUGGESTIONS_TEMPERATURE: float = 0.7
     LLM_SUGGESTIONS_MAX_TOKENS: int = 2000
+
+    LLM_SUMMARY_MODEL: str = "llama-3.3-70b-versatile"
+    LLM_SUMMARY_TEMPERATURE: float = 0.3
+    LLM_SUMMARY_MAX_TOKENS: int = 512
 
     # ChromaDB settings (vector database for semantic search)
     CHROMA_SERVER_HOST: str = "localhost"

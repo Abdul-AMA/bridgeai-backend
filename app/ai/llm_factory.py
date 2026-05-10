@@ -103,41 +103,67 @@ class LLMFactory:
             raise ValueError(f"Unsupported provider: {provider}")
 
     @staticmethod
-    def create_summary_llm() -> ChatGroq:
+    def _default_api_key(provider: str) -> str:
+        """Return the configured API key for the default provider."""
+        key_map = {
+            LLMProvider.ANTHROPIC: settings.ANTHROPIC_API_KEY,
+            LLMProvider.OPENAI: settings.OPENAI_API_KEY,
+            LLMProvider.GEMINI: settings.GEMINI_API_KEY,
+            LLMProvider.GROQ: settings.GROQ_API_KEY,
+            LLMProvider.MISTRAL: settings.MISTRAL_API_KEY,
+        }
+        key = key_map.get(provider.lower(), "")
+        if not key:
+            raise ValueError(
+                f"API key for provider '{provider}' is not configured. "
+                f"Set the corresponding *_API_KEY environment variable."
+            )
+        return key
+
+    @staticmethod
+    def create_summary_llm() -> Any:
         """Create LLM instance for project context summarization."""
-        return ChatGroq(
-            model=settings.LLM_CLARIFICATION_MODEL,
-            groq_api_key=settings.GROQ_API_KEY,
-            temperature=0.3,
-            max_tokens=512,
+        provider = settings.LLM_DEFAULT_PROVIDER
+        return LLMFactory.create_llm(
+            provider=provider,
+            model=settings.LLM_SUMMARY_MODEL,
+            api_key=LLMFactory._default_api_key(provider),
+            temperature=settings.LLM_SUMMARY_TEMPERATURE,
+            max_tokens=settings.LLM_SUMMARY_MAX_TOKENS,
         )
 
     @staticmethod
-    def create_clarification_llm() -> ChatGroq:
+    def create_clarification_llm() -> Any:
         """Create LLM instance for clarification/ambiguity detection."""
-        return ChatGroq(
+        provider = settings.LLM_DEFAULT_PROVIDER
+        return LLMFactory.create_llm(
+            provider=provider,
             model=settings.LLM_CLARIFICATION_MODEL,
-            groq_api_key=settings.GROQ_API_KEY,
+            api_key=LLMFactory._default_api_key(provider),
             temperature=settings.LLM_CLARIFICATION_TEMPERATURE,
             max_tokens=settings.LLM_CLARIFICATION_MAX_TOKENS,
         )
 
     @staticmethod
-    def create_template_filler_llm() -> ChatGroq:
+    def create_template_filler_llm() -> Any:
         """Create LLM instance for template filling/CRS generation."""
-        return ChatGroq(
+        provider = settings.LLM_DEFAULT_PROVIDER
+        return LLMFactory.create_llm(
+            provider=provider,
             model=settings.LLM_TEMPLATE_FILLER_MODEL,
-            groq_api_key=settings.GROQ_API_KEY,
+            api_key=LLMFactory._default_api_key(provider),
             temperature=settings.LLM_TEMPLATE_FILLER_TEMPERATURE,
             max_tokens=settings.LLM_TEMPLATE_FILLER_MAX_TOKENS,
         )
 
     @staticmethod
-    def create_suggestions_llm() -> ChatGroq:
+    def create_suggestions_llm() -> Any:
         """Create LLM instance for generating improvement suggestions."""
-        return ChatGroq(
+        provider = settings.LLM_DEFAULT_PROVIDER
+        return LLMFactory.create_llm(
+            provider=provider,
             model=settings.LLM_SUGGESTIONS_MODEL,
-            groq_api_key=settings.GROQ_API_KEY,
+            api_key=LLMFactory._default_api_key(provider),
             temperature=settings.LLM_SUGGESTIONS_TEMPERATURE,
             max_tokens=settings.LLM_SUGGESTIONS_MAX_TOKENS,
         )
@@ -147,32 +173,34 @@ class LLMFactory:
         model: Optional[str] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
-    ) -> ChatGroq:
-        """Create a custom LLM instance, falling back to default settings."""
-        return ChatGroq(
+    ) -> Any:
+        """Create a custom LLM instance using the default provider."""
+        provider = settings.LLM_DEFAULT_PROVIDER
+        return LLMFactory.create_llm(
+            provider=provider,
             model=model or settings.LLM_DEFAULT_MODEL,
-            groq_api_key=settings.GROQ_API_KEY,
+            api_key=LLMFactory._default_api_key(provider),
             temperature=temperature if temperature is not None else 0.3,
             max_tokens=max_tokens or 2048,
         )
 
 
-def get_summary_llm() -> ChatGroq:
-    """Get LLM instance for project context summarization (low token cap — summaries are short)."""
+def get_summary_llm() -> Any:
+    """Get LLM instance for project context summarization."""
     return LLMFactory.create_summary_llm()
 
 
-def get_clarification_llm() -> ChatGroq:
+def get_clarification_llm() -> Any:
     """Get LLM instance for clarification tasks."""
     return LLMFactory.create_clarification_llm()
 
 
-def get_template_filler_llm() -> ChatGroq:
+def get_template_filler_llm() -> Any:
     """Get LLM instance for template filling tasks."""
     return LLMFactory.create_template_filler_llm()
 
 
-def get_suggestions_llm() -> ChatGroq:
+def get_suggestions_llm() -> Any:
     """Get LLM instance for suggestions generation."""
     return LLMFactory.create_suggestions_llm()
 
@@ -181,6 +209,6 @@ def get_llm(
     model: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
-) -> ChatGroq:
+) -> Any:
     """Get a custom LLM instance."""
     return LLMFactory.create_custom_llm(model, temperature, max_tokens)
