@@ -6,6 +6,10 @@ from .crs import CRSDocument
 from .message import Message
 from .notification import Notification, NotificationType
 from .project import Project
+from .requirement import Requirement, RequirementStatus
+from .traceability_link import TraceabilityLink, SourceType
+from .test_case import TestCase, TestCaseStatus
+from .rtm_status import RTMStatus, RTMTrigger
 from .session_model import SessionModel
 from .team import Team, TeamMember
 from .user import User

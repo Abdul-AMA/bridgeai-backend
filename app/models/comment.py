@@ -10,8 +10,11 @@ class Comment(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     crs_id = Column(
-        Integer, ForeignKey("crs_documents.id"), nullable=False, index=True
-    )  # CRITICAL: FK index for CRS comments
+        Integer, ForeignKey("crs_documents.id"), nullable=True, index=True
+    )  # Nullable: RTM requirement comments have no crs_id
+    requirement_id = Column(
+        Integer, ForeignKey("requirements.id", ondelete="CASCADE"), nullable=True, index=True
+    )  # Set when comment belongs to an RTM requirement
     author_id = Column(
         Integer, ForeignKey("users.id"), nullable=False
     )  # No index - rarely query comments by author
@@ -24,4 +27,5 @@ class Comment(Base):
 
     # Relationships
     crs_document = relationship("CRSDocument", backref="comments")
+    requirement = relationship("Requirement", back_populates="comments")
     author = relationship("User", backref="comments")
