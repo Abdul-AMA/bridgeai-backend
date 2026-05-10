@@ -16,6 +16,7 @@ alembic
 python-multipart
 slowapi==0.1.9
 pytest
+pytest-asyncio
 httpx
 email-validator
 resend
