@@ -310,6 +310,10 @@ def update_crs_status_endpoint(
     db.add(audit_entry)
     db.commit()
 
+    # Queue RTM refresh on status change
+    from app.services.background_rtm_generator import queue_rtm_generation_from_thread
+    queue_rtm_generation_from_thread(crs.project_id, "status_change")
+
     try:
         summary_points = (
             json.loads(updated_crs.summary_points) if updated_crs.summary_points else []

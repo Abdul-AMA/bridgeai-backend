@@ -90,6 +90,10 @@ def create_crs(
     
     notify_crs_created(db, crs, project, notify_users, send_email_notification=True)
 
+    # Queue RTM refresh for the new CRS
+    from app.services.background_rtm_generator import queue_rtm_generation_from_thread
+    queue_rtm_generation_from_thread(crs_in.project_id, "save")
+
     # Parse summary_points and field_sources for response
     try:
         summary_points_list = json.loads(crs.summary_points) if crs.summary_points else []
