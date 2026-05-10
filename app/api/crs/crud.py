@@ -5,7 +5,7 @@ Handles basic Create, Read operations for CRS documents.
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
@@ -28,6 +28,7 @@ router = APIRouter()
 @router.post("/", response_model=CRSOut, status_code=status.HTTP_201_CREATED)
 def create_crs(
     crs_in: CRSCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -74,9 +75,9 @@ def create_crs(
             session.crs_document_id = crs.id
             db.commit()
 
-    # Notify team members about the new CRS
+    # Notify team members after the response is sent so email latency doesn't block the caller.
     from app.models.team import TeamMember
-    
+
     notify_user_ids = (
         db.query(TeamMember.user_id)
         .filter(
@@ -87,8 +88,9 @@ def create_crs(
         .all()
     )
     notify_users = [uid[0] for uid in notify_user_ids]
-    
-    notify_crs_created(db, crs, project, notify_users, send_email_notification=True)
+    background_tasks.add_task(
+        notify_crs_created, db, crs, project, notify_users, send_email_notification=True
+    )
 
     # Parse summary_points and field_sources for response
     try:
