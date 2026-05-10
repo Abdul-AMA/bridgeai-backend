@@ -63,13 +63,28 @@ async def lifespan(app: FastAPI):
     from app.services.background_crs_generator import start_crs_worker, stop_crs_worker
     from app.services.background_summary_generator import start_summary_worker, stop_summary_worker
 
-    await _run_worker("CRS worker", start_crs_worker)
-    await _run_worker("Summary worker", start_summary_worker)
+    # Start background RTM generation worker
+    try:
+        from app.services.background_rtm_generator import start_rtm_worker
+        await start_rtm_worker()
+        logging.info("Background RTM generation worker started.")
+    except Exception as e:
+        logging.error(f"Failed to start RTM worker: {str(e)}")
+
+    yield  # The app stays running here
 
     yield
 
     await _stop_worker("CRS worker", stop_crs_worker)
     await _stop_worker("Summary worker", stop_summary_worker)
+
+    # Cleanup: Stop background RTM worker
+    try:
+        from app.services.background_rtm_generator import stop_rtm_worker
+        await stop_rtm_worker()
+        logging.info("Background RTM worker stopped.")
+    except Exception as e:
+        logging.error(f"Failed to stop RTM worker: {str(e)}")
 
 
 app = FastAPI(

@@ -735,3 +735,131 @@ def generate_csv_bytes(rows: List[Dict[str, Any]]) -> bytes:
     writer.writeheader()
     writer.writerows(rows)
     return output.getvalue().encode("utf-8-sig")
+
+
+# ── RTM Export ──────────────────────────────────────────────────────────────
+
+RTM_CSV_COLUMNS = [
+    "req_id",
+    "section",
+    "description",
+    "full_text",
+    "source_count",
+    "sources",
+    "test_case_count",
+    "test_cases",
+]
+
+
+def export_rtm_csv(requirements: list, links: list, test_cases: list) -> bytes:
+    """Generate a CSV export of the full RTM."""
+    from collections import defaultdict
+
+    links_by_req: dict = defaultdict(list)
+    for lk in links:
+        links_by_req[lk.requirement_id].append(lk)
+
+    tcs_by_req: dict = defaultdict(list)
+    for tc in test_cases:
+        tcs_by_req[tc.requirement_id].append(tc)
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=RTM_CSV_COLUMNS)
+    writer.writeheader()
+
+    for req in requirements:
+        req_links = links_by_req[req.id]
+        req_tcs = tcs_by_req[req.id]
+
+        sources_text = " | ".join(
+            f"{lk.source_type.value if hasattr(lk.source_type, 'value') else lk.source_type}:{lk.source_id} — {lk.excerpt[:80]}"
+            for lk in req_links
+        )
+        tc_text = " | ".join(
+            f"{tc.title}: {tc.expected_result[:80]}" for tc in req_tcs
+        )
+
+        writer.writerow(
+            {
+                "req_id": req.req_id,
+                "section": req.section,
+                "description": req.description,
+                "full_text": req.full_text,
+                "source_count": len(req_links),
+                "sources": sources_text,
+                "test_case_count": len(req_tcs),
+                "test_cases": tc_text,
+            }
+        )
+
+    return output.getvalue().encode("utf-8-sig")
+
+
+def export_rtm_pdf(requirements: list, links: list, test_cases: list) -> bytes:
+    """Generate a PDF export of the full RTM using xhtml2pdf."""
+    import html as html_lib
+    from collections import defaultdict
+
+    links_by_req: dict = defaultdict(list)
+    for lk in links:
+        links_by_req[lk.requirement_id].append(lk)
+
+    tcs_by_req: dict = defaultdict(list)
+    for tc in test_cases:
+        tcs_by_req[tc.requirement_id].append(tc)
+
+    rows_html = ""
+    for req in requirements:
+        req_links = links_by_req[req.id]
+        req_tcs = tcs_by_req[req.id]
+
+        sources_html = "<br>".join(
+            html_lib.escape(
+                f"{lk.source_type.value if hasattr(lk.source_type, 'value') else lk.source_type}: {lk.excerpt[:120]}"
+            )
+            for lk in req_links
+        ) or "—"
+        tc_html = "<br>".join(
+            html_lib.escape(f"{tc.title}") for tc in req_tcs
+        ) or "—"
+
+        rows_html += f"""
+        <tr>
+          <td>{html_lib.escape(req.req_id)}</td>
+          <td>{html_lib.escape(req.section)}</td>
+          <td>{html_lib.escape(req.description)}</td>
+          <td>{len(req_links)}</td>
+          <td style="font-size:9pt">{sources_html}</td>
+          <td>{len(req_tcs)}</td>
+          <td style="font-size:9pt">{tc_html}</td>
+        </tr>"""
+
+    html_doc = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {{ font-family: Arial, sans-serif; font-size: 10pt; color: #222; margin: 20px; }}
+    h1 {{ font-size: 18pt; color: #0066cc; border-bottom: 2px solid #0066cc; padding-bottom: 6px; }}
+    table {{ border-collapse: collapse; width: 100%; margin-top: 12px; }}
+    th {{ background-color: #0066cc; color: white; padding: 8px; text-align: left; font-size: 9pt; }}
+    td {{ border: 1px solid #ddd; padding: 6px 8px; vertical-align: top; }}
+    tr:nth-child(even) {{ background-color: #f9f9f9; }}
+  </style>
+</head>
+<body>
+  <h1>Requirements Traceability Matrix</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Req ID</th><th>Section</th><th>Description</th>
+        <th>Sources</th><th>Source Details</th>
+        <th>Tests</th><th>Test Cases</th>
+      </tr>
+    </thead>
+    <tbody>{rows_html}</tbody>
+  </table>
+</body>
+</html>"""
+
+    return html_to_pdf_bytes(html_doc)

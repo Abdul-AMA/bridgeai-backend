@@ -105,6 +105,41 @@ def create_crs(
         .all()
     )
     notify_users = [uid[0] for uid in notify_user_ids]
+    
+    notify_crs_created(db, crs, project, notify_users, send_email_notification=True)
+
+    # Queue RTM refresh for the new CRS
+    from app.services.background_rtm_generator import queue_rtm_generation_from_thread
+    queue_rtm_generation_from_thread(crs_in.project_id, "save")
+
+    # Parse summary_points and field_sources for response
+    try:
+        summary_points_list = json.loads(crs.summary_points) if crs.summary_points else []
+    except Exception:
+        summary_points_list = []
+
+    try:
+        field_sources_data = (
+            json.loads(crs.field_sources) if crs.field_sources else None
+        )
+    except Exception:
+        field_sources_data = None
+
+    return CRSOut(
+        id=crs.id,
+        project_id=crs.project_id,
+        status=crs.status.value,
+        pattern=crs.pattern.value if crs.pattern else "babok",
+        version=crs.version,
+        edit_version=crs.edit_version,
+        content=crs.content,
+        summary_points=summary_points_list,
+        field_sources=field_sources_data,
+        created_by=crs.created_by,
+        approved_by=crs.approved_by,
+        rejection_reason=crs.rejection_reason,
+        reviewed_at=crs.reviewed_at,
+        created_at=crs.created_at,
     background_tasks.add_task(
         notify_crs_created, db, crs, project, notify_users, send_email_notification=True
     )

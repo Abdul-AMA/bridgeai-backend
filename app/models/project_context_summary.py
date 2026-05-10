@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Index, Integer, Text
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Text
 
 from app.db.session import Base
 
@@ -25,9 +25,4 @@ class ProjectContextSummary(Base):
         Enum(TriggerType), nullable=False, default=TriggerType.manual
     )
 
-    __table_args__ = (
-        Index(
-            "ix_project_context_summaries_project_id", "project_id", unique=True
-        ),
-        {"mysql_engine": "InnoDB"},
-    )
+    __table_args__ = ({"mysql_engine": "InnoDB"},)

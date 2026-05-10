@@ -480,6 +480,10 @@ class BackgroundCRSGenerator:
         })
         
         logger.info(f"CRS generation complete for session {session_id} (complete={is_complete})")
+
+        # Queue RTM refresh for the project (debounced — 5-min window for draft triggers)
+        from app.services.background_rtm_generator import queue_rtm_generation_from_thread
+        queue_rtm_generation_from_thread(task.project_id, "draft")
     
     async def queue_generation(
         self,
