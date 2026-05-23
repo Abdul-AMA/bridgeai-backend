@@ -73,8 +73,6 @@ async def lifespan(app: FastAPI):
 
     yield  # The app stays running here
 
-    yield
-
     await _stop_worker("CRS worker", stop_crs_worker)
     await _stop_worker("Summary worker", stop_summary_worker)
 
@@ -145,6 +143,60 @@ app.add_middleware(
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 
 app.include_router(api_router, prefix="/api")
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    import re
+    import traceback
+
+    from sqlalchemy.orm import Session
+
+    from app.db.session import SessionLocal
+    from app.models.system_error_log import SystemErrorLog
+
+    _SECRET_PATTERN = re.compile(
+        r"(token|key|secret|password|bearer|authorization)=[^\s&]*",
+        re.IGNORECASE,
+    )
+    raw_path = request.url.path
+    if request.url.query:
+        raw_path = f"{raw_path}?{request.url.query}"
+    safe_path = _SECRET_PATTERN.sub(lambda m: m.group(0).split("=")[0] + "=[REDACTED]", raw_path)
+
+    user_id: int | None = None
+    try:
+        from app.core.security import decode_access_token
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            payload = decode_access_token(auth_header[7:])
+            sub = payload.get("sub")
+            if sub:
+                user_id = int(sub)
+    except Exception:
+        pass
+
+    db: Session = SessionLocal()
+    try:
+        log = SystemErrorLog(
+            error_code="500",
+            path=safe_path[:512],
+            method=request.method,
+            message=str(exc)[:2000],
+            stack_trace=traceback.format_exc()[:8000],
+            user_id=user_id,
+        )
+        db.add(log)
+        db.commit()
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 # Mount static files for avatars
 import os

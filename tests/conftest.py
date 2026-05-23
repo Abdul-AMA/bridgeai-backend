@@ -25,6 +25,18 @@ import app.core.rate_limit
 
 app.core.rate_limit.limiter = mock_limiter
 
+# Mock ChromaDB so tests run without a running Chroma server
+_mock_chroma_client = MagicMock()
+_mock_chroma_collection = MagicMock()
+_mock_chroma_collection.query.return_value = {"ids": [[]], "documents": [[]], "metadatas": [[]]}
+_mock_chroma_collection.add.return_value = None
+_mock_chroma_collection.get.return_value = {"ids": [], "documents": [], "metadatas": []}
+chroma_patcher = patch(
+    "app.ai.chroma_manager.initialize_chroma",
+    return_value=(_mock_chroma_client, _mock_chroma_collection),
+)
+chroma_patcher.start()
+
 # Mock email sending globally for all tests
 email_patcher = patch("app.utils.email.send_email", return_value=None)
 email_patcher.start()
