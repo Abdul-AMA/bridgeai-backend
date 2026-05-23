@@ -68,16 +68,22 @@ def verify_token(token: str, db: Session):
 def get_current_user(
     token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
 ):
-    """Get current user and ensure role is set (not NULL)."""
+    """Get current user and ensure role is set (not NULL) and account is active."""
     user = verify_token(token, db)
-    
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account suspended",
+        )
+
     # Check if user has selected a role
     if user.role is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Please select your role before accessing this feature. Complete your profile setup first.",
         )
-    
+
     return user
 
 

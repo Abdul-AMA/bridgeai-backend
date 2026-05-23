@@ -125,25 +125,6 @@ def create_crs(
     except Exception:
         field_sources_data = None
 
-    return CRSOut(
-        id=crs.id,
-        project_id=crs.project_id,
-        status=crs.status.value,
-        pattern=crs.pattern.value if crs.pattern else "babok",
-        version=crs.version,
-        edit_version=crs.edit_version,
-        content=crs.content,
-        summary_points=summary_points_list,
-        field_sources=field_sources_data,
-        created_by=crs.created_by,
-        approved_by=crs.approved_by,
-        rejection_reason=crs.rejection_reason,
-        reviewed_at=crs.reviewed_at,
-        created_at=crs.created_at,
-    background_tasks.add_task(
-        notify_crs_created, db, crs, project, notify_users, send_email_notification=True
-    )
-
     return _build_crs_out(crs)
 
 
