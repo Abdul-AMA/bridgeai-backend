@@ -11,6 +11,8 @@ from .traceability_link import TraceabilityLink, SourceType
 from .test_case import TestCase, TestCaseStatus
 from .rtm_status import RTMStatus, RTMTrigger
 from .session_model import SessionModel
+from .admin_audit import AdminAuditLog
+from .system_error_log import SystemErrorLog
 from .team import Team, TeamMember
 from .user import User
 from .project_context_summary import ProjectContextSummary, TriggerType
