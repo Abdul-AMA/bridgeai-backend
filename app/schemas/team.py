@@ -15,6 +15,7 @@ class TeamStatus(str, Enum):
     active = "active"
     inactive = "inactive"
     archived = "archived"
+    suspended = "suspended"
 
 
 # User info for team member details
