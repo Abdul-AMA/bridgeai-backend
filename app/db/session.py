@@ -12,13 +12,17 @@ if "mysql" in database_url.lower() and "charset" not in database_url.lower():
     database_url = f"{database_url}{separator}charset=utf8mb4"
 
 _is_sqlite = database_url.startswith("sqlite")
-_engine_kwargs = {} if _is_sqlite else {
-    "pool_size": 20,
-    "max_overflow": 10,
-    "pool_recycle": 3600,
-    "pool_pre_ping": True,
-    "pool_timeout": 30,
-}
+_engine_kwargs: dict = (
+    {"connect_args": {"check_same_thread": False}}
+    if _is_sqlite
+    else {
+        "pool_size": 20,
+        "max_overflow": 10,
+        "pool_recycle": 3600,
+        "pool_pre_ping": True,
+        "pool_timeout": 30,
+    }
+)
 engine = create_engine(database_url, echo=False, **_engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

@@ -4,7 +4,7 @@ Handles basic Create, Read operations for CRS documents.
 """
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.json_utils import safe_json_loads
@@ -48,7 +48,6 @@ def _build_crs_out(crs: CRSDocument) -> CRSOut:
 @router.post("/", response_model=CRSOut, status_code=status.HTTP_201_CREATED)
 def create_crs(
     crs_in: CRSCreate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

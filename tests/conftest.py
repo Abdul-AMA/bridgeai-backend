@@ -2,6 +2,7 @@
 Pytest configuration and fixtures for testing the BridgeAI backend application.
 """
 
+import atexit
 import os
 import sys
 from typing import Dict, Generator
@@ -36,10 +37,12 @@ chroma_patcher = patch(
     return_value=(_mock_chroma_client, _mock_chroma_collection),
 )
 chroma_patcher.start()
+atexit.register(chroma_patcher.stop)
 
 # Mock email sending globally for all tests
 email_patcher = patch("app.utils.email.send_email", return_value=None)
 email_patcher.start()
+atexit.register(email_patcher.stop)
 
 from app.db.session import Base, get_db
 from app.main import app

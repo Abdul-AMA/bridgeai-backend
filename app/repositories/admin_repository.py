@@ -1,10 +1,10 @@
 """Admin repository — read-only query methods for the super admin dashboard."""
 
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import List, Optional, Tuple
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.admin_audit import AdminAuditLog
@@ -53,9 +53,6 @@ class AdminRepository:
             )
         except Exception:
             pass
-
-        seven_days_ago = datetime.utcnow()
-        from datetime import timedelta
 
         seven_days_ago = datetime.utcnow() - timedelta(days=7)
         ai_error_count_7d = (
@@ -132,18 +129,23 @@ class AdminRepository:
             )
 
         total = q.count()
-        users = q.order_by(User.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
-        items = []
-        for user in users:
-            team_count = (
-                self.db.query(func.count(TeamMember.id))
-                .filter(TeamMember.user_id == user.id, TeamMember.is_active.is_(True))
-                .scalar()
-                or 0
-            )
-            items.append({**user.__dict__, "team_count": team_count})
+        team_count_sq = (
+            select(func.count(TeamMember.id))
+            .where(TeamMember.user_id == User.id, TeamMember.is_active.is_(True))
+            .correlate(User)
+            .scalar_subquery()
+        )
 
+        rows = (
+            q.add_columns(team_count_sq.label("team_count"))
+            .order_by(User.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+
+        items = [{**user.__dict__, "team_count": tc} for user, tc in rows]
         return items, total
 
     def get_user_by_id(self, user_id: int) -> Optional[dict]:
@@ -378,8 +380,6 @@ class AdminRepository:
         to_date: date,
         group_by: Optional[str] = None,
     ) -> dict:
-        from datetime import timedelta
-
         labels = []
         current = from_date
         while current <= to_date:
@@ -393,90 +393,120 @@ class AdminRepository:
                 from app.models.ai_usage import AIUsageLog  # type: ignore
 
                 if group_by == "team":
+                    rows = (
+                        self.db.query(
+                            TeamMember.team_id,
+                            func.date(AIUsageLog.created_at).label("day"),
+                            func.sum(AIUsageLog.total_tokens).label("total"),
+                        )
+                        .join(User, User.id == AIUsageLog.user_id)
+                        .join(TeamMember, TeamMember.user_id == User.id)
+                        .filter(
+                            func.date(AIUsageLog.created_at) >= from_date,
+                            func.date(AIUsageLog.created_at) <= to_date,
+                        )
+                        .group_by(TeamMember.team_id, func.date(AIUsageLog.created_at))
+                        .all()
+                    )
+                    team_day: dict = {}
+                    for r in rows:
+                        team_day.setdefault(r.team_id, {})[str(r.day)] = r.total or 0
                     teams = self.db.query(Team).all()
                     for team in teams:
-                        data = []
-                        for label in labels:
-                            day = date.fromisoformat(label)
-                            total = (
-                                self.db.query(func.sum(AIUsageLog.total_tokens))
-                                .join(User, User.id == AIUsageLog.user_id)
-                                .join(TeamMember, TeamMember.user_id == User.id)
-                                .filter(
-                                    TeamMember.team_id == team.id,
-                                    func.date(AIUsageLog.created_at) == day,
-                                )
-                                .scalar()
-                                or 0
-                            )
-                            data.append(total)
-                        datasets.append({"label": team.name, "data": data})
+                        day_map = team_day.get(team.id, {})
+                        datasets.append({"label": team.name, "data": [day_map.get(lbl, 0) for lbl in labels]})
                 else:
-                    data = []
-                    for label in labels:
-                        day = date.fromisoformat(label)
-                        total = (
-                            self.db.query(func.sum(AIUsageLog.total_tokens))
-                            .filter(func.date(AIUsageLog.created_at) == day)
-                            .scalar()
-                            or 0
+                    rows = (
+                        self.db.query(
+                            func.date(AIUsageLog.created_at).label("day"),
+                            func.sum(AIUsageLog.total_tokens).label("total"),
                         )
-                        data.append(total)
-                    datasets.append({"label": "Total tokens", "data": data})
+                        .filter(
+                            func.date(AIUsageLog.created_at) >= from_date,
+                            func.date(AIUsageLog.created_at) <= to_date,
+                        )
+                        .group_by(func.date(AIUsageLog.created_at))
+                        .all()
+                    )
+                    day_map = {str(r.day): r.total or 0 for r in rows}
+                    datasets.append({"label": "Total tokens", "data": [day_map.get(lbl, 0) for lbl in labels]})
             except Exception:
                 datasets.append({"label": "Total tokens", "data": [0] * len(labels)})
 
         elif metric == "crs_generations":
-            data = []
-            for label in labels:
-                day = date.fromisoformat(label)
-                total = (
-                    self.db.query(func.count(CRSDocument.id))
-                    .filter(func.date(CRSDocument.created_at) == day)
-                    .scalar()
-                    or 0
+            rows = (
+                self.db.query(
+                    func.date(CRSDocument.created_at).label("day"),
+                    func.count(CRSDocument.id).label("total"),
                 )
-                data.append(total)
-            datasets.append({"label": "CRS generations", "data": data})
+                .filter(
+                    func.date(CRSDocument.created_at) >= from_date,
+                    func.date(CRSDocument.created_at) <= to_date,
+                )
+                .group_by(func.date(CRSDocument.created_at))
+                .all()
+            )
+            day_map = {str(r.day): r.total or 0 for r in rows}
+            datasets.append({"label": "CRS generations", "data": [day_map.get(lbl, 0) for lbl in labels]})
 
         elif metric == "active_users":
-            data = []
-            for label in labels:
-                day = date.fromisoformat(label)
-                total = (
-                    self.db.query(func.count(func.distinct(User.id)))
-                    .filter(func.date(User.created_at) <= day, User.is_active.is_(True))
-                    .scalar()
-                    or 0
+            baseline = (
+                self.db.query(func.count(User.id))
+                .filter(User.is_active.is_(True), func.date(User.created_at) < from_date)
+                .scalar() or 0
+            )
+            rows = (
+                self.db.query(
+                    func.date(User.created_at).label("day"),
+                    func.count(User.id).label("cnt"),
                 )
-                data.append(total)
+                .filter(
+                    User.is_active.is_(True),
+                    func.date(User.created_at) >= from_date,
+                    func.date(User.created_at) <= to_date,
+                )
+                .group_by(func.date(User.created_at))
+                .all()
+            )
+            new_per_day = {str(r.day): r.cnt for r in rows}
+            cumulative = baseline
+            data = []
+            for lbl in labels:
+                cumulative += new_per_day.get(lbl, 0)
+                data.append(cumulative)
             datasets.append({"label": "Active users", "data": data})
 
         elif metric == "new_teams":
-            data = []
-            for label in labels:
-                day = date.fromisoformat(label)
-                total = (
-                    self.db.query(func.count(Team.id))
-                    .filter(func.date(Team.created_at) == day)
-                    .scalar()
-                    or 0
+            rows = (
+                self.db.query(
+                    func.date(Team.created_at).label("day"),
+                    func.count(Team.id).label("total"),
                 )
-                data.append(total)
-            datasets.append({"label": "New teams", "data": data})
+                .filter(
+                    func.date(Team.created_at) >= from_date,
+                    func.date(Team.created_at) <= to_date,
+                )
+                .group_by(func.date(Team.created_at))
+                .all()
+            )
+            day_map = {str(r.day): r.total or 0 for r in rows}
+            datasets.append({"label": "New teams", "data": [day_map.get(lbl, 0) for lbl in labels]})
 
         elif metric == "ai_errors":
-            data = []
-            for label in labels:
-                day = date.fromisoformat(label)
-                total = (
-                    self.db.query(func.count(SystemErrorLog.id))
-                    .filter(func.date(SystemErrorLog.created_at) == day)
-                    .scalar()
-                    or 0
+            rows = (
+                self.db.query(
+                    func.date(SystemErrorLog.created_at).label("day"),
+                    func.count(SystemErrorLog.id).label("total"),
                 )
-                data.append(total)
-            datasets.append({"label": "AI errors", "data": data})
+                .filter(
+                    func.date(SystemErrorLog.created_at) >= from_date,
+                    func.date(SystemErrorLog.created_at) <= to_date,
+                )
+                .group_by(func.date(SystemErrorLog.created_at))
+                .all()
+            )
+            day_map = {str(r.day): r.total or 0 for r in rows}
+            datasets.append({"label": "AI errors", "data": [day_map.get(lbl, 0) for lbl in labels]})
 
         return {
             "metric": metric,

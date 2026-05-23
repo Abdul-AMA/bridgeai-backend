@@ -1,5 +1,5 @@
 import math
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -90,4 +90,4 @@ def update_user_role(
     actor: User = Depends(verify_super_admin),
 ):
     updated = admin_service.change_user_role(db, actor, user_id, body.role)
-    return {"id": updated.id, "role": updated.role.value, "updated_at": updated.created_at}
+    return {"id": updated.id, "role": updated.role.value, "updated_at": datetime.utcnow()}

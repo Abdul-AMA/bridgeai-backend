@@ -20,12 +20,16 @@ def upgrade() -> None:
     op.execute("ALTER TABLE users MODIFY COLUMN role ENUM('client', 'ba', 'super_admin') NULL")
 
     # Add suspension fields to users
-    op.add_column("users", sa.Column("suspended_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True))
+    op.add_column("users", sa.Column("suspended_by", sa.Integer(), nullable=True))
     op.add_column("users", sa.Column("suspended_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("users", sa.Column("suspension_reason", sa.Text(), nullable=True))
+    op.create_foreign_key(
+        "fk_users_suspended_by", "users", "users", ["suspended_by"], ["id"], ondelete="SET NULL"
+    )
 
 
 def downgrade() -> None:
+    op.drop_constraint("fk_users_suspended_by", "users", type_="foreignkey")
     op.drop_column("users", "suspension_reason")
     op.drop_column("users", "suspended_at")
     op.drop_column("users", "suspended_by")
