@@ -19,8 +19,10 @@ from . import (
     teams,
     usage,
 )
+from .admin import router as admin_router
 
 router = APIRouter()
+router.include_router(admin_router, prefix="/admin", tags=["admin"])
 router.include_router(auth.router, prefix="/auth", tags=["auth"])
 router.include_router(ai_config.router, prefix="/settings/ai", tags=["ai-config"])
 router.include_router(projects.router, prefix="/projects", tags=["projects"])

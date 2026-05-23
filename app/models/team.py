@@ -26,6 +26,7 @@ class TeamStatus(enum.Enum):
     active = "active"
     inactive = "inactive"
     archived = "archived"
+    suspended = "suspended"
 
 
 class Team(Base):
@@ -40,6 +41,11 @@ class Team(Base):
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    # Admin-imposed suspension fields
+    suspended_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    suspended_at = Column(DateTime(timezone=True), nullable=True)
+    suspension_reason = Column(Text, nullable=True)
 
     # Relationships
     creator = relationship("User", foreign_keys=[created_by])
@@ -62,7 +68,6 @@ class TeamMember(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    # Ensure a user can only be in a team once
     __table_args__ = (UniqueConstraint("team_id", "user_id", name="unique_team_user"),)
 
     # Relationships

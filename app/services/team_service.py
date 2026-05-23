@@ -115,6 +115,12 @@ class TeamService:
                 status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
             )
 
+        if team.status == TeamStatus.suspended:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This team has been suspended by platform administration",
+            )
+
         return team
 
     @staticmethod

@@ -61,6 +61,16 @@ class PermissionService:
         Raises:
             HTTPException 403: If user is not a member or lacks required role
         """
+        # Reject access to admin-suspended teams
+        from app.models.team import TeamStatus
+        team_repo = TeamRepository(db)
+        team = team_repo.get_by_id(team_id)
+        if team and team.status == TeamStatus.suspended:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This team has been suspended by platform administration",
+            )
+
         team_member_repo = TeamMemberRepository(db)
         team_member = team_member_repo.get_by_team_and_user(team_id, user_id)
 
